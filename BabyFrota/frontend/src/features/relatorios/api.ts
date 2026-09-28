@@ -1,55 +1,65 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import type { PagedResult } from '@/types/paged-result'
 import type {
   ClienteRelatorio,
-  FaturamentoPorDia,
-  LocacaoHistorico,
+  ModeloHistorico,
   RelatorioClientesFiltro,
-  RelatorioClientesResumo,
   RelatorioHistoricoFiltro,
-  RelatorioHistoricoResumo,
+  UsuarioFiltro,
 } from './types'
 
-export function useRelatorioClientes(filtro: RelatorioClientesFiltro) {
-  return useQuery({
-    queryKey: ['relatorios', 'clientes', filtro],
-    queryFn: async () => (await api.get<PagedResult<ClienteRelatorio>>('/relatorio/clientes', { params: filtro })).data,
-    placeholderData: keepPreviousData,
-  })
+/**
+ * As procedures do legado são pesadas em períodos longos, então o relatório tem um limite próprio, igual ao do
+ * servidor (5 minutos), em vez dos 25 segundos das demais chamadas.
+ */
+const TEMPO_LIMITE_RELATORIO_MS = 300_000
+
+/**
+ * Um relatório pedido pelo botão "Gerar". `geracao` muda a cada clique, para gerar de novo com os mesmos filtros.
+ * Nada roda sozinho: nem ao digitar, nem ao voltar para a aba, nem repetindo após erro (a consulta é cara).
+ */
+export interface PedidoRelatorio<F> {
+  filtro: F
+  geracao: number
 }
 
-export function useRelatorioClientesResumo(filtro: RelatorioClientesFiltro) {
+const opcoesDeRelatorio = { staleTime: Infinity, refetchOnWindowFocus: false, retry: false } as const
+
+export function useRelatorioClientes(pedido: PedidoRelatorio<RelatorioClientesFiltro> | null) {
   return useQuery({
-    queryKey: ['relatorios', 'clientes', 'resumo', filtro],
+    queryKey: ['relatorios', 'clientes', pedido],
     queryFn: async () =>
-      (await api.get<RelatorioClientesResumo>('/relatorio/clientes/resumo', { params: filtro })).data,
-    placeholderData: keepPreviousData,
+      (
+        await api.get<ClienteRelatorio[]>('/relatorio/clientes', {
+          params: pedido?.filtro,
+          timeout: TEMPO_LIMITE_RELATORIO_MS,
+        })
+      ).data,
+    enabled: pedido !== null,
+    ...opcoesDeRelatorio,
   })
 }
 
-export function useRelatorioHistorico(filtro: RelatorioHistoricoFiltro) {
+/** Só consulta quando `pedido` é do `modelo` indicado; a tela chama um hook por modelo. */
+export function useRelatorioHistorico<T>(modelo: ModeloHistorico, pedido: PedidoRelatorio<RelatorioHistoricoFiltro> | null) {
   return useQuery({
-    queryKey: ['relatorios', 'historico', filtro],
-    queryFn: async () => (await api.get<PagedResult<LocacaoHistorico>>('/relatorio/historico', { params: filtro })).data,
-    placeholderData: keepPreviousData,
-  })
-}
-
-export function useRelatorioHistoricoResumo(filtro: RelatorioHistoricoFiltro) {
-  return useQuery({
-    queryKey: ['relatorios', 'historico', 'resumo', filtro],
+    queryKey: ['relatorios', 'historico', modelo, pedido],
     queryFn: async () =>
-      (await api.get<RelatorioHistoricoResumo>('/relatorio/historico/resumo', { params: filtro })).data,
-    placeholderData: keepPreviousData,
+      (
+        await api.get<T[]>(`/relatorio/historico/${modelo}`, {
+          params: pedido?.filtro,
+          timeout: TEMPO_LIMITE_RELATORIO_MS,
+        })
+      ).data,
+    enabled: pedido !== null,
+    ...opcoesDeRelatorio,
   })
 }
 
-export function useFaturamentoPorDia(filtro: RelatorioHistoricoFiltro) {
+export function useUsuariosRelatorio() {
   return useQuery({
-    queryKey: ['relatorios', 'historico', 'faturamento-por-dia', filtro],
-    queryFn: async () =>
-      (await api.get<FaturamentoPorDia[]>('/relatorio/historico/faturamento-por-dia', { params: filtro })).data,
-    placeholderData: keepPreviousData,
+    queryKey: ['relatorios', 'usuarios'],
+    queryFn: async () => (await api.get<UsuarioFiltro[]>('/relatorio/usuarios')).data,
+    staleTime: 5 * 60_000,
   })
 }

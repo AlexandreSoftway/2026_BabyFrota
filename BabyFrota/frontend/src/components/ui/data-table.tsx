@@ -12,12 +12,14 @@ import {
   exportarPdf,
   type ColunaExportacao,
   type DadosExportacao,
+  type GrupoCabecalho,
   type ValorExportavel,
 } from '@/lib/export'
-import { extrairMensagemErro } from '@/lib/utils'
+import { cn, extrairMensagemErro } from '@/lib/utils'
 import { toast } from '@/stores/toast-store'
 
 export interface DataTableColumn<T> {
+  /** Pode ter "\n" para um cabeçalho em duas linhas. */
   header: string
   cell: (row: T) => ReactNode
   /** Usado na exportação CSV. Colunas sem isto ficam de fora do arquivo exportado. */
@@ -41,8 +43,9 @@ interface DataTableProps<T> {
   rowKey: (row: T) => string | number
   isLoading?: boolean
   emptyMessage?: string
-  searchValue: string
-  onSearchChange: (value: string) => void
+  /** Sem isto a caixa de busca não aparece. */
+  searchValue?: string
+  onSearchChange?: (value: string) => void
   searchPlaceholder?: string
   pagina: number
   totalPaginas: number
@@ -69,6 +72,13 @@ interface DataTableProps<T> {
   exportTitle?: string
   /** Contexto impresso no arquivo, ex.: os filtros aplicados. */
   exportSubtitle?: string
+
+  /** Faixa de títulos acima dos cabeçalhos (ex.: "DADOS DO CLIENTE"), também levada ao Excel e ao PDF. */
+  headerGroups?: GrupoCabecalho[]
+  /** Células menores e sem quebra de linha, para tabelas com muitas colunas. */
+  compact?: boolean
+  /** No PDF largo demais para uma página, a coluna repetida em cada página. */
+  exportPdfFixedColumn?: number
 }
 
 const ROTULO_FORMATO: Record<FormatoExportacao, string> = { csv: 'Exportar CSV', excel: 'Excel', pdf: 'PDF' }
@@ -103,6 +113,9 @@ export function DataTable<T>({
   loadAllForExport,
   exportTitle,
   exportSubtitle,
+  headerGroups,
+  compact,
+  exportPdfFixedColumn,
 }: DataTableProps<T>) {
   const [expandidos, setExpandidos] = useState<Set<string | number>>(new Set())
   const [exportando, setExportando] = useState<FormatoExportacao | null>(null)
@@ -135,6 +148,8 @@ export function DataTable<T>({
         colunas: colunas.map(({ cabecalho, tipo }) => ({ cabecalho, tipo })),
         linhas: registros.map((row) => colunas.map((c) => c.value(row))),
         rodape: exportFooter,
+        grupos: headerGroups,
+        colunaFixaPdf: exportPdfFixedColumn,
       }
 
       if (formato === 'csv') exportarCsv(dados)
@@ -147,18 +162,23 @@ export function DataTable<T>({
     }
   }
 
+  const classeCabecalho = cn('whitespace-pre-line', compact && 'h-auto px-2 py-1.5 text-xs')
+  const classeCelula = compact ? 'whitespace-nowrap px-2 py-1.5 text-xs' : undefined
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="relative w-full max-w-sm">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder={searchPlaceholder}
-            className="pl-8"
-            value={searchValue}
-            onChange={(e) => onSearchChange(e.target.value)}
-          />
-        </div>
+      <div className={cn('flex flex-wrap items-center gap-2', onSearchChange ? 'justify-between' : 'justify-end')}>
+        {onSearchChange && (
+          <div className="relative w-full max-w-sm">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder={searchPlaceholder}
+              className="pl-8"
+              value={searchValue ?? ''}
+              onChange={(e) => onSearchChange(e.target.value)}
+            />
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-3">
           {onTamanhoPaginaChange && (
             <PageSizeSelect tamanhoPagina={tamanhoPagina} onChange={onTamanhoPaginaChange} />
@@ -196,14 +216,32 @@ export function DataTable<T>({
         <CardContent className="p-0">
           <Table>
             <TableHeader>
+              {headerGroups && headerGroups.length > 0 && (
+                <TableRow className="hover:bg-transparent">
+                  {renderDetail && <TableHead className="w-10 px-2" />}
+                  {headerGroups.map((grupo, i) => (
+                    <TableHead
+                      key={i}
+                      colSpan={grupo.colunas}
+                      className={cn(
+                        'border-x text-center font-semibold text-foreground',
+                        compact && 'h-auto px-2 py-1.5 text-xs',
+                      )}
+                    >
+                      {grupo.titulo}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              )}
               <TableRow>
                 {renderDetail && (
                   <TableHead className="w-10 px-2">
                     <span className="sr-only">Detalhes</span>
                   </TableHead>
                 )}
-                {columns.map((col) => (
-                  <TableHead key={col.header} className={col.className}>
+                {/* Chave pela posição: os relatórios do legado repetem títulos ("Dt Nasc", "Gênero"...). */}
+                {columns.map((col, i) => (
+                  <TableHead key={i} className={cn(classeCabecalho, col.className)}>
                     {col.header}
                   </TableHead>
                 ))}
@@ -245,8 +283,8 @@ export function DataTable<T>({
                             </Button>
                           </TableCell>
                         )}
-                        {columns.map((col) => (
-                          <TableCell key={col.header} className={col.className}>
+                        {columns.map((col, i) => (
+                          <TableCell key={i} className={cn(classeCelula, col.className)}>
                             {col.cell(row)}
                           </TableCell>
                         ))}
@@ -267,7 +305,7 @@ export function DataTable<T>({
                 <TableRow className="hover:bg-transparent">
                   {renderDetail && <TableCell className="px-2" />}
                   {columns.map((col, i) => (
-                    <TableCell key={col.header} className={col.className}>
+                    <TableCell key={i} className={cn(classeCelula, col.className)}>
                       {footer[i]}
                     </TableCell>
                   ))}

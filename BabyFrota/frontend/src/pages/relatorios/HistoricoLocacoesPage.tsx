@@ -1,36 +1,65 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Clock, DollarSign, ListChecks, TicketPercent } from 'lucide-react'
+import { CalendarDays, Clock, DollarSign, Gauge, ListChecks, Loader2, Play, TicketPercent } from 'lucide-react'
+import { ClienteAutocomplete } from '@/components/clientes/ClienteAutocomplete'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { RelatorioTabela } from '@/components/relatorios/RelatorioTabela'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
-import { DataTable, type DataTableColumn } from '@/components/ui/data-table'
-import {
-  useFaturamentoPorDia,
-  useRelatorioHistorico,
-  useRelatorioHistoricoResumo,
-} from '@/features/relatorios/api'
 import { useCarrinhos } from '@/features/carrinhos/api'
+import type { Cliente } from '@/features/clientes/types'
+import { useRelatorioHistorico, useUsuariosRelatorio, type PedidoRelatorio } from '@/features/relatorios/api'
+import {
+  colunasDetalhado,
+  colunasOcupacao,
+  colunasSimplificado,
+  dataCurta,
+  gruposDetalhado,
+  gruposOcupacao,
+  gruposSimplificado,
+} from '@/features/relatorios/colunas'
+import type {
+  HistoricoLocacaoDetalhado,
+  HistoricoLocacaoSimplificado,
+  HistoricoOcupacao,
+  ModeloHistorico,
+  RelatorioHistoricoFiltro,
+} from '@/features/relatorios/types'
 import { useTiposCarrinho } from '@/features/tipos-carrinho/api'
-import type { LocacaoHistorico, RelatorioHistoricoFiltro } from '@/features/relatorios/types'
-import { extrairMensagemErro, formatarDataHora, formatarMoeda } from '@/lib/utils'
+import { extrairMensagemErro, formatarMinutos, formatarMoeda } from '@/lib/utils'
 import { toast } from '@/stores/toast-store'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
 
-const TAMANHO_PAGINA_PADRAO = 10
+const MODELOS: Record<ModeloHistorico, { rotulo: string; descricao: string; titulo: string; arquivo: string }> = {
+  ocupacao: {
+    rotulo: 'Histórico de Locações (ocupação por dia)',
+    descricao:
+      'Uma linha por dia (caixa fechado): minutos disponíveis, usados e ociosos, faturamento e tempo ocioso por faixa de hora. Só locações devolvidas.',
+    titulo: 'Histórico de Locações',
+    arquivo: 'historico-locacoes',
+  },
+  detalhado: {
+    rotulo: 'Histórico Detalhado',
+    descricao: 'Uma linha por locação, com os dados do dia, do caixa, do cliente (e filhos), do carrinho e do pagamento.',
+    titulo: 'Histórico de Locações Detalhado',
+    arquivo: 'historico-locacoes-detalhado',
+  },
+  simplificado: {
+    rotulo: 'Histórico Simplificado',
+    descricao: 'Uma linha por locação, com as colunas principais.',
+    titulo: 'Histórico de Locações Simplificado',
+    arquivo: 'historico-locacoes-simplificado',
+  },
+}
 
-function KpiCard({
-  titulo,
-  valor,
-  icon: Icon,
-}: {
-  titulo: string
-  valor: string
-  icon: typeof Clock
-}) {
+function dataIso(data: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${data.getFullYear()}-${pad(data.getMonth() + 1)}-${pad(data.getDate())}`
+}
+
+function KpiCard({ titulo, valor, icon: Icon }: { titulo: string; valor: string; icon: typeof Clock }) {
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
@@ -44,241 +73,340 @@ function KpiCard({
   )
 }
 
-function formatarTempo(minutos: number | null) {
-  if (!minutos || minutos <= 0) return '—'
-  const horas = Math.floor(minutos / 60)
-  const restante = minutos % 60
-  return horas > 0 ? `${horas}h ${restante}min` : `${restante}min`
+/** Faturamento somado por dia (data da entrega, ou da abertura do caixa na ocupação). */
+function faturamentoPorDia(linhas: { data: string; valor: number | null }[]) {
+  const porDia = new Map<string, number>()
+  for (const { data, valor } of linhas) {
+    const dia = data.slice(0, 10)
+    porDia.set(dia, (porDia.get(dia) ?? 0) + (valor ?? 0))
+  }
+  return [...porDia.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([data, faturamento]) => ({ data, faturamento }))
+}
+
+interface Gerado {
+  modelo: ModeloHistorico
+  pedido: PedidoRelatorio<RelatorioHistoricoFiltro>
+  /** Os filtros aplicados, em texto, para o cabeçalho do Excel e do PDF. */
+  filtros: string
 }
 
 export function HistoricoLocacoesPage() {
-  const [dataEntregaInicio, setDataEntregaInicio] = useState('')
-  const [dataEntregaFinal, setDataEntregaFinal] = useState('')
-  const [clienteNome, setClienteNome] = useState('')
+  const hoje = new Date()
+  const [modelo, setModelo] = useState<ModeloHistorico>('ocupacao')
+  const [dataInicio, setDataInicio] = useState(() => dataIso(new Date(hoje.getFullYear(), hoje.getMonth(), 1)))
+  const [dataFim, setDataFim] = useState(() => dataIso(hoje))
+  const [cliente, setCliente] = useState<Cliente | null>(null)
   const [carrinhoId, setCarrinhoId] = useState(0)
   const [tipoCarrinhoId, setTipoCarrinhoId] = useState(0)
-  const [somenteEmAndamento, setSomenteEmAndamento] = useState(false)
-  const [pagina, setPagina] = useState(1)
-  const [tamanhoPagina, setTamanhoPagina] = useState(TAMANHO_PAGINA_PADRAO)
+  const [usuarioEntregaId, setUsuarioEntregaId] = useState(0)
+  const [usuarioDevolucaoId, setUsuarioDevolucaoId] = useState(0)
+  const [gerado, setGerado] = useState<Gerado | null>(null)
 
   const { data: carrinhos } = useCarrinhos({ tamanhoPagina: 500 })
   const { data: tiposCarrinho } = useTiposCarrinho()
+  const { data: usuarios } = useUsuariosRelatorio()
 
-  const clienteNomeAtrasado = useDebouncedValue(clienteNome, 400)
-
-  const filtro: RelatorioHistoricoFiltro = {
-    dataEntregaInicio: dataEntregaInicio || undefined,
-    dataEntregaFinal: dataEntregaFinal || undefined,
-    clienteNome: clienteNomeAtrasado || undefined,
-    carrinhoId: carrinhoId || undefined,
-    tipoCarrinhoId: tipoCarrinhoId || undefined,
-    somenteEmAndamento: somenteEmAndamento || undefined,
-    pagina,
-    tamanhoPagina,
-  }
-
-  const { data, isLoading, isError, error } = useRelatorioHistorico(filtro)
-  const { data: resumo } = useRelatorioHistoricoResumo(filtro)
-  const { data: faturamentoPorDia } = useFaturamentoPorDia(filtro)
-  const semFiltroDeData = !dataEntregaInicio && !dataEntregaFinal
+  // Um hook por modelo; só o do modelo gerado consulta.
+  const pedidoDe = (m: ModeloHistorico) => (gerado?.modelo === m ? gerado.pedido : null)
+  const ocupacao = useRelatorioHistorico<HistoricoOcupacao>('ocupacao', pedidoDe('ocupacao'))
+  const detalhado = useRelatorioHistorico<HistoricoLocacaoDetalhado>('detalhado', pedidoDe('detalhado'))
+  const simplificado = useRelatorioHistorico<HistoricoLocacaoSimplificado>('simplificado', pedidoDe('simplificado'))
+  const consulta = gerado?.modelo === 'detalhado' ? detalhado : gerado?.modelo === 'simplificado' ? simplificado : ocupacao
 
   useEffect(() => {
-    if (isError) toast.error('Não foi possível carregar o histórico de locações.', extrairMensagemErro(error))
-  }, [isError, error])
+    if (consulta.isError) toast.error('Não foi possível gerar o relatório.', extrairMensagemErro(consulta.error))
+  }, [consulta.isError, consulta.error])
 
-  function onChangeClienteNome(valor: string) {
-    setClienteNome(valor)
-    setPagina(1)
+  const periodoValido = Boolean(dataInicio && dataFim)
+
+  function gerar(e: FormEvent) {
+    e.preventDefault()
+    if (!periodoValido) return
+    // Como no legado: com carrinho escolhido, o tipo não é enviado.
+    const tipo = carrinhoId > 0 ? 0 : tipoCarrinhoId
+    const filtro: RelatorioHistoricoFiltro = {
+      dataEntregaInicio: dataInicio,
+      dataEntregaFinal: dataFim,
+      clienteId: cliente?.id,
+      carrinhoId: carrinhoId || undefined,
+      tipoCarrinhoId: tipo || undefined,
+      usuarioEntregaId: usuarioEntregaId || undefined,
+      usuarioDevolucaoId: usuarioDevolucaoId || undefined,
+    }
+    const nomeDe = <T extends { id: number }>(lista: T[] | undefined, id: number, nome: (x: T) => string) => {
+      const item = id ? lista?.find((x) => x.id === id) : undefined
+      return item ? nome(item) : null
+    }
+    const filtros = [
+      `Entrega de ${dataCurta(dataInicio)} até ${dataCurta(dataFim)}`,
+      cliente ? `Cliente: ${cliente.nome}` : null,
+      nomeDe(carrinhos?.itens, carrinhoId, (c) => `Carrinho: ${c.descricao}`),
+      nomeDe(tiposCarrinho, tipo, (t) => `Tipo: ${t.descricao}`),
+      nomeDe(usuarios, usuarioEntregaId, (u) => `Entregou: ${u.nome}`),
+      nomeDe(usuarios, usuarioDevolucaoId, (u) => `Devolveu: ${u.nome}`),
+    ]
+      .filter(Boolean)
+      .join(' · ')
+    setGerado((anterior) => ({ modelo, filtros, pedido: { filtro, geracao: (anterior?.pedido.geracao ?? 0) + 1 } }))
   }
 
-  const columns: DataTableColumn<LocacaoHistorico>[] = [
-    {
-      header: 'Entrega',
-      cell: (l) => formatarDataHora(l.dataEntrega),
-      exportValue: (l) => formatarDataHora(l.dataEntrega),
-    },
-    { header: 'Cliente', cell: (l) => <span className="font-medium">{l.clienteNome}</span>, exportValue: (l) => l.clienteNome },
-    {
-      header: 'Carrinho',
-      cell: (l) => <Badge variant="default">{l.carrinhoDescricao}</Badge>,
-      exportValue: (l) => l.carrinhoDescricao,
-    },
-    { header: 'Tipo', cell: (l) => l.tipoCarrinhoDescricao, exportValue: (l) => l.tipoCarrinhoDescricao },
-    { header: 'Tempo', cell: (l) => formatarTempo(l.tempoMinutos), exportValue: (l) => l.tempoMinutos ?? '' },
-    {
-      header: 'Valor total',
-      cell: (l) => (l.valorTotal != null ? formatarMoeda(l.valorTotal) : '—'),
-      exportValue: (l) => l.valorTotal ?? '',
-    },
-    {
-      header: 'Pagamento',
-      cell: (l) => (l.quantidadeParcelas > 1 ? `${l.formaPagamento} (+${l.quantidadeParcelas - 1})` : l.formaPagamento),
-      exportValue: (l) => l.formaPagamento,
-    },
-    { header: 'Usuário entrega', cell: (l) => l.usuarioEntregaNome, exportValue: (l) => l.usuarioEntregaNome },
-    {
-      header: 'Status',
-      cell: (l) => (
-        <Badge variant={l.emAndamento ? 'warning' : 'success'}>{l.emAndamento ? 'Em andamento' : 'Devolvida'}</Badge>
-      ),
-      exportValue: (l) => (l.emAndamento ? 'Em andamento' : 'Devolvida'),
-    },
-  ]
+  function limpar() {
+    setCliente(null)
+    setCarrinhoId(0)
+    setTipoCarrinhoId(0)
+    setUsuarioEntregaId(0)
+    setUsuarioDevolucaoId(0)
+  }
+
+  const carregando = consulta.isFetching
+  // O último relatório gerado, quando já chegou (some enquanto um novo está sendo gerado).
+  const resultado = carregando ? null : gerado
 
   return (
     <>
       <PageHeader
         title="Histórico de Locações"
-        description="Locações realizadas — faturamento, tempo de uso e ocupação, com filtros para análise gerencial."
+        description="Os três relatórios de histórico do legado, com a mesma saída de dados: mesmas procedures, colunas e formatos."
       />
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard titulo="Locações no período" valor={resumo ? String(resumo.totalLocacoes) : '—'} icon={ListChecks} />
-        <KpiCard titulo="Faturamento" valor={resumo ? formatarMoeda(resumo.faturamento) : '—'} icon={DollarSign} />
-        <KpiCard titulo="Ticket médio" valor={resumo ? formatarMoeda(resumo.ticketMedio) : '—'} icon={TicketPercent} />
+      <Card className="mb-4">
+        <CardContent className="pt-6">
+          <form onSubmit={gerar} className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <div className="col-span-2 space-y-1.5">
+              <Label htmlFor="modelo">Relatório</Label>
+              <Select id="modelo" value={modelo} onChange={(e) => setModelo(e.target.value as ModeloHistorico)}>
+                {(Object.keys(MODELOS) as ModeloHistorico[]).map((m) => (
+                  <option key={m} value={m}>
+                    {MODELOS[m].rotulo}
+                  </option>
+                ))}
+              </Select>
+              <p className="text-xs text-muted-foreground">{MODELOS[modelo].descricao}</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="dataInicio">Entrega de *</Label>
+              <Input id="dataInicio" type="date" required value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="dataFim">Entrega até *</Label>
+              <Input id="dataFim" type="date" required value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
+            </div>
+
+            <div className="col-span-2 space-y-1.5">
+              <Label>Cliente</Label>
+              <ClienteAutocomplete clienteSelecionado={cliente} onSelecionar={setCliente} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="carrinhoId">Carrinho</Label>
+              <Select id="carrinhoId" value={carrinhoId} onChange={(e) => setCarrinhoId(Number(e.target.value))}>
+                <option value={0}>Todos</option>
+                {carrinhos?.itens.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.descricao}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="tipoCarrinhoId">Tipo de carrinho</Label>
+              <Select
+                id="tipoCarrinhoId"
+                value={carrinhoId > 0 ? 0 : tipoCarrinhoId}
+                onChange={(e) => setTipoCarrinhoId(Number(e.target.value))}
+                disabled={carrinhoId > 0}
+                title={carrinhoId > 0 ? 'Com um carrinho escolhido, o tipo não se aplica (como no legado).' : undefined}
+              >
+                <option value={0}>Todos</option>
+                {tiposCarrinho?.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.descricao}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="usuarioEntregaId">Quem entregou</Label>
+              <Select id="usuarioEntregaId" value={usuarioEntregaId} onChange={(e) => setUsuarioEntregaId(Number(e.target.value))}>
+                <option value={0}>Todos</option>
+                {usuarios?.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.nome}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="usuarioDevolucaoId">Quem devolveu</Label>
+              <Select
+                id="usuarioDevolucaoId"
+                value={usuarioDevolucaoId}
+                onChange={(e) => setUsuarioDevolucaoId(Number(e.target.value))}
+              >
+                <option value={0}>Todos</option>
+                {usuarios?.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.nome}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="col-span-2 flex items-end justify-end gap-2">
+              <Button type="button" variant="outline" onClick={limpar} disabled={carregando}>
+                Limpar filtros
+              </Button>
+              <Button type="submit" disabled={carregando || !periodoValido}>
+                {carregando ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
+                {carregando ? 'Gerando...' : 'Gerar relatório'}
+              </Button>
+            </div>
+            {!periodoValido && (
+              <p className="col-span-full text-xs text-destructive">Informe a data inicial e a data final da entrega.</p>
+            )}
+          </form>
+        </CardContent>
+      </Card>
+
+      {carregando && (
+        <p className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" /> Gerando o relatório. Em períodos longos pode levar alguns minutos.
+        </p>
+      )}
+
+      {resultado?.modelo === 'ocupacao' && ocupacao.data && (
+        <ResultadoOcupacao linhas={ocupacao.data} gerado={resultado} />
+      )}
+      {resultado?.modelo === 'detalhado' && detalhado.data && (
+        <ResultadoLocacoes
+          linhas={detalhado.data}
+          gerado={resultado}
+          tabela={
+            <RelatorioTabela
+              key={resultado.pedido.geracao}
+              colunas={colunasDetalhado}
+              grupos={gruposDetalhado}
+              linhas={detalhado.data}
+              titulo={MODELOS.detalhado.titulo}
+              nomeArquivo={MODELOS.detalhado.arquivo}
+              subtitulo={resultado.filtros}
+              colunaFixaPdf={41}
+            />
+          }
+        />
+      )}
+      {resultado?.modelo === 'simplificado' && simplificado.data && (
+        <ResultadoLocacoes
+          linhas={simplificado.data}
+          gerado={resultado}
+          tabela={
+            <RelatorioTabela
+              key={resultado.pedido.geracao}
+              colunas={colunasSimplificado}
+              grupos={gruposSimplificado}
+              linhas={simplificado.data}
+              titulo={MODELOS.simplificado.titulo}
+              nomeArquivo={MODELOS.simplificado.arquivo}
+              subtitulo={resultado.filtros}
+            />
+          }
+        />
+      )}
+    </>
+  )
+}
+
+function GraficoFaturamento({ dados }: { dados: { data: string; faturamento: number }[] }) {
+  return (
+    <Card className="mb-4">
+      <CardHeader>
+        <CardTitle>Faturamento por dia</CardTitle>
+      </CardHeader>
+      <CardContent className="h-72">
+        {dados.length > 0 ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={dados}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="data" tick={{ fontSize: 12 }} tickFormatter={(v: string) => `${v.slice(8, 10)}/${v.slice(5, 7)}`} />
+              <YAxis tick={{ fontSize: 12 }} />
+              <Tooltip labelFormatter={(v: string) => dataCurta(v)} formatter={(value: number) => formatarMoeda(value)} />
+              <Bar dataKey="faturamento" name="Faturamento" fill="var(--color-primary)" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Sem locações no período.</div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+/** Detalhado e Simplificado: indicadores e gráfico calculados das mesmas linhas da tabela. */
+function ResultadoLocacoes({
+  linhas,
+  gerado,
+  tabela,
+}: {
+  linhas: (HistoricoLocacaoDetalhado | HistoricoLocacaoSimplificado)[]
+  gerado: Gerado
+  tabela: ReactNode
+}) {
+  const devolvidas = linhas.filter((l) => l.valorTotal !== null)
+  const faturamento = devolvidas.reduce((soma, l) => soma + (l.valorTotal ?? 0), 0)
+  const comTempo = linhas.filter((l) => l.tempoMinutos !== null)
+  const tempoMedio = comTempo.length > 0 ? comTempo.reduce((soma, l) => soma + (l.tempoMinutos ?? 0), 0) / comTempo.length : null
+
+  return (
+    <>
+      <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard titulo="Locações no período" valor={String(linhas.length)} icon={ListChecks} />
+        <KpiCard titulo="Faturamento" valor={formatarMoeda(faturamento)} icon={DollarSign} />
         <KpiCard
-          titulo="Tempo médio de uso"
-          valor={resumo ? formatarTempo(Math.round(resumo.tempoMedioMinutos)) : '—'}
-          icon={Clock}
+          titulo="Ticket médio"
+          valor={devolvidas.length > 0 ? formatarMoeda(faturamento / devolvidas.length) : '—'}
+          icon={TicketPercent}
+        />
+        <KpiCard titulo="Tempo médio de uso" valor={tempoMedio !== null ? formatarMinutos(Math.round(tempoMedio)) : '—'} icon={Clock} />
+      </div>
+      <GraficoFaturamento dados={faturamentoPorDia(linhas.map((l) => ({ data: l.dataEntrega, valor: l.valorTotal })))} />
+      <p className="mb-2 text-xs text-muted-foreground">{gerado.filtros}</p>
+      {tabela}
+    </>
+  )
+}
+
+/** Ocupação por dia: indicadores e gráfico calculados das mesmas linhas da tabela. */
+function ResultadoOcupacao({ linhas, gerado }: { linhas: HistoricoOcupacao[]; gerado: Gerado }) {
+  const locacoes = linhas.reduce((soma, o) => soma + o.quantidadeLocacoes, 0)
+  const faturamento = linhas.reduce((soma, o) => soma + o.valorFaturado, 0)
+  const disponiveis = linhas.reduce((soma, o) => soma + o.minutosDisponiveisValor, 0)
+  const utilizados = linhas.reduce((soma, o) => soma + o.minutosUtilizadosValor, 0)
+  const ocupacao = disponiveis > 0 ? (utilizados / disponiveis) * 100 : null
+
+  return (
+    <>
+      <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard titulo="Dias (caixas)" valor={String(linhas.length)} icon={CalendarDays} />
+        <KpiCard titulo="Locações" valor={String(locacoes)} icon={ListChecks} />
+        <KpiCard titulo="Faturamento" valor={formatarMoeda(faturamento)} icon={DollarSign} />
+        <KpiCard
+          titulo="Tempo utilizado (período)"
+          valor={ocupacao !== null ? `${ocupacao.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} %` : '—'}
+          icon={Gauge}
         />
       </div>
-
-      <Card className="mb-4">
-        <CardContent className="grid grid-cols-2 gap-4 pt-6 md:grid-cols-3 lg:grid-cols-5">
-          <div className="space-y-1.5">
-            <Label htmlFor="dataEntregaInicio">Entrega de</Label>
-            <Input
-              id="dataEntregaInicio"
-              type="date"
-              value={dataEntregaInicio}
-              onChange={(e) => {
-                setDataEntregaInicio(e.target.value)
-                setPagina(1)
-              }}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="dataEntregaFinal">Entrega até</Label>
-            <Input
-              id="dataEntregaFinal"
-              type="date"
-              value={dataEntregaFinal}
-              onChange={(e) => {
-                setDataEntregaFinal(e.target.value)
-                setPagina(1)
-              }}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="carrinhoId">Carrinho</Label>
-            <Select
-              id="carrinhoId"
-              value={carrinhoId}
-              onChange={(e) => {
-                setCarrinhoId(Number(e.target.value))
-                setPagina(1)
-              }}
-            >
-              <option value={0}>Todos</option>
-              {carrinhos?.itens.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.descricao}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="tipoCarrinhoId">Tipo de carrinho</Label>
-            <Select
-              id="tipoCarrinhoId"
-              value={tipoCarrinhoId}
-              onChange={(e) => {
-                setTipoCarrinhoId(Number(e.target.value))
-                setPagina(1)
-              }}
-              disabled={carrinhoId > 0}
-            >
-              <option value={0}>Todos</option>
-              {tiposCarrinho?.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.descricao}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="flex items-end space-x-2 pb-2">
-            <input
-              id="somenteEmAndamento"
-              type="checkbox"
-              className="size-4"
-              checked={somenteEmAndamento}
-              onChange={(e) => {
-                setSomenteEmAndamento(e.target.checked)
-                setPagina(1)
-              }}
-            />
-            <Label htmlFor="somenteEmAndamento" className="cursor-pointer font-normal">
-              Somente em andamento
-            </Label>
-          </div>
-          {semFiltroDeData && (
-            <p className="col-span-full text-xs text-muted-foreground">
-              Sem data selecionada, mostrando os últimos 90 dias por padrão (evita consultas lentas sobre todo o
-              histórico). Escolha um período específico para ver datas mais antigas.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="mb-4">
-        <CardHeader>
-          <CardTitle>Faturamento por dia</CardTitle>
-        </CardHeader>
-        <CardContent className="h-72">
-          {faturamentoPorDia && faturamentoPorDia.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={faturamentoPorDia}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis
-                  dataKey="data"
-                  tick={{ fontSize: 12 }}
-                  tickFormatter={(v) => new Date(v).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-                />
-                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-                <Tooltip
-                  labelFormatter={(v) => new Date(v).toLocaleDateString('pt-BR')}
-                  formatter={(value: number) => formatarMoeda(value)}
-                />
-                <Bar dataKey="faturamento" name="Faturamento" fill="var(--color-primary)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              Sem locações no período.
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <DataTable
-        columns={columns}
-        data={data?.itens ?? []}
-        rowKey={(l) => l.id}
-        isLoading={isLoading}
-        searchValue={clienteNome}
-        onSearchChange={onChangeClienteNome}
-        searchPlaceholder="Buscar por cliente..."
-        emptyMessage="Nenhuma locação encontrada para os filtros selecionados."
-        pagina={data?.pagina ?? pagina}
-        totalPaginas={data?.totalPaginas ?? 0}
-        totalRegistros={data?.totalRegistros ?? 0}
-        tamanhoPagina={data?.tamanhoPagina ?? tamanhoPagina}
-        onPageChange={setPagina}
-        onTamanhoPaginaChange={(t) => {
-          setTamanhoPagina(t)
-          setPagina(1)
-        }}
-        exportFileName="historico-locacoes"
+      <GraficoFaturamento dados={faturamentoPorDia(linhas.map((o) => ({ data: o.dataAbertura, valor: o.valorFaturado })))} />
+      <p className="mb-2 text-xs text-muted-foreground">
+        {gerado.filtros} · O tempo utilizado soma as locações simultâneas, como no legado, e pode passar de 100%.
+      </p>
+      <RelatorioTabela
+        key={gerado.pedido.geracao}
+        colunas={colunasOcupacao}
+        grupos={gruposOcupacao}
+        linhas={linhas}
+        titulo={MODELOS.ocupacao.titulo}
+        nomeArquivo={MODELOS.ocupacao.arquivo}
+        subtitulo={gerado.filtros}
+        colunaFixaPdf={5}
       />
     </>
   )

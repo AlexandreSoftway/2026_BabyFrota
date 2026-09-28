@@ -1,28 +1,20 @@
-import { useEffect, useState } from 'react'
-import { DollarSign, ListChecks, TicketPercent, Users } from 'lucide-react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { DollarSign, ListChecks, Loader2, Play, TicketPercent, Users } from 'lucide-react'
+import { ClienteAutocomplete } from '@/components/clientes/ClienteAutocomplete'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { RelatorioTabela } from '@/components/relatorios/RelatorioTabela'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
-import { DataTable, type DataTableColumn } from '@/components/ui/data-table'
-import { useRelatorioClientes, useRelatorioClientesResumo } from '@/features/relatorios/api'
-import type { ClienteRelatorio, RelatorioClientesFiltro } from '@/features/relatorios/types'
+import type { Cliente } from '@/features/clientes/types'
+import { useRelatorioClientes, type PedidoRelatorio } from '@/features/relatorios/api'
+import { colunasClientes, dataCurta } from '@/features/relatorios/colunas'
+import type { RelatorioClientesFiltro } from '@/features/relatorios/types'
 import { extrairMensagemErro, formatarMoeda } from '@/lib/utils'
 import { toast } from '@/stores/toast-store'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
 
-const TAMANHO_PAGINA_PADRAO = 10
-
-function KpiCard({
-  titulo,
-  valor,
-  icon: Icon,
-}: {
-  titulo: string
-  valor: string
-  icon: typeof Users
-}) {
+function KpiCard({ titulo, valor, icon: Icon }: { titulo: string; valor: string; icon: typeof Users }) {
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
@@ -36,191 +28,183 @@ function KpiCard({
   )
 }
 
-function formatarTempo(minutos: number) {
-  if (minutos <= 0) return '—'
-  const horas = Math.floor(minutos / 60)
-  const restante = minutos % 60
-  return horas > 0 ? `${horas}h ${restante}min` : `${restante}min`
-}
-
-function formatarData(iso: string | null) {
-  return iso ? new Date(iso).toLocaleDateString('pt-BR') : '—'
+/** Os filtros aplicados, em texto, para o cabeçalho do Excel e do PDF. */
+function descreverFiltros(filtro: RelatorioClientesFiltro, cliente: Cliente | null) {
+  const periodo = (rotulo: string, de?: string, ate?: string) =>
+    de || ate ? `${rotulo} ${de ? `de ${dataCurta(de)} ` : ''}${ate ? `até ${dataCurta(ate)}` : ''}`.trim() : null
+  return (
+    [
+      cliente ? `Cliente: ${cliente.nome}` : null,
+      filtro.cidade ? `Cidade: ${filtro.cidade}` : null,
+      filtro.complemento ? `Complemento: ${filtro.complemento}` : null,
+      filtro.uf ? `UF: ${filtro.uf}` : null,
+      periodo('Cadastro', filtro.dataCadastroInicio, filtro.dataCadastroFinal),
+      periodo('Locação', filtro.dataLocacaoInicio, filtro.dataLocacaoFinal),
+    ]
+      .filter(Boolean)
+      .join(' · ') || 'Sem filtros'
+  )
 }
 
 export function RelatorioClientesPage() {
-  const [nome, setNome] = useState('')
+  const [cliente, setCliente] = useState<Cliente | null>(null)
   const [cidade, setCidade] = useState('')
+  const [complemento, setComplemento] = useState('')
   const [uf, setUf] = useState('')
   const [dataCadastroInicio, setDataCadastroInicio] = useState('')
   const [dataCadastroFinal, setDataCadastroFinal] = useState('')
   const [dataLocacaoInicio, setDataLocacaoInicio] = useState('')
   const [dataLocacaoFinal, setDataLocacaoFinal] = useState('')
-  const [pagina, setPagina] = useState(1)
-  const [tamanhoPagina, setTamanhoPagina] = useState(TAMANHO_PAGINA_PADRAO)
 
-  const nomeAtrasado = useDebouncedValue(nome, 400)
-  const cidadeAtrasada = useDebouncedValue(cidade, 400)
-  const ufAtrasada = useDebouncedValue(uf, 400)
+  const [pedido, setPedido] = useState<PedidoRelatorio<RelatorioClientesFiltro> | null>(null)
+  const [filtrosAplicados, setFiltrosAplicados] = useState('')
 
-  const filtro: RelatorioClientesFiltro = {
-    nome: nomeAtrasado || undefined,
-    cidade: cidadeAtrasada || undefined,
-    uf: ufAtrasada || undefined,
-    dataCadastroInicio: dataCadastroInicio || undefined,
-    dataCadastroFinal: dataCadastroFinal || undefined,
-    dataLocacaoInicio: dataLocacaoInicio || undefined,
-    dataLocacaoFinal: dataLocacaoFinal || undefined,
-    pagina,
-    tamanhoPagina,
-  }
-
-  const { data, isLoading, isError, error } = useRelatorioClientes(filtro)
-  const { data: resumo } = useRelatorioClientesResumo(filtro)
+  const { data, isFetching, isError, error } = useRelatorioClientes(pedido)
 
   useEffect(() => {
-    if (isError) toast.error('Não foi possível carregar o relatório de clientes.', extrairMensagemErro(error))
+    if (isError) toast.error('Não foi possível gerar o relatório de clientes.', extrairMensagemErro(error))
   }, [isError, error])
 
-  function onChangeNome(valor: string) {
-    setNome(valor)
-    setPagina(1)
-  }
-
-  function onChangeFiltro(setter: (v: string) => void) {
-    return (valor: string) => {
-      setter(valor)
-      setPagina(1)
+  function gerar(e: FormEvent) {
+    e.preventDefault()
+    const filtro: RelatorioClientesFiltro = {
+      clienteId: cliente?.id,
+      cidade: cidade || undefined,
+      complemento: complemento || undefined,
+      uf: uf || undefined,
+      dataCadastroInicio: dataCadastroInicio || undefined,
+      dataCadastroFinal: dataCadastroFinal || undefined,
+      dataLocacaoInicio: dataLocacaoInicio || undefined,
+      dataLocacaoFinal: dataLocacaoFinal || undefined,
     }
+    setFiltrosAplicados(descreverFiltros(filtro, cliente))
+    setPedido((anterior) => ({ filtro, geracao: (anterior?.geracao ?? 0) + 1 }))
   }
 
-  const columns: DataTableColumn<ClienteRelatorio>[] = [
-    { header: 'Nome', cell: (c) => <span className="font-medium">{c.nome}</span>, exportValue: (c) => c.nome },
-    { header: 'CPF', cell: (c) => c.cpf, exportValue: (c) => c.cpf },
-    {
-      header: 'Cidade/UF',
-      cell: (c) => (c.cidade ? `${c.cidade}/${c.uf ?? ''}` : '—'),
-      exportValue: (c) => (c.cidade ? `${c.cidade}/${c.uf ?? ''}` : ''),
-    },
-    { header: 'Telefone', cell: (c) => c.telefone, exportValue: (c) => c.telefone },
-    {
-      header: 'Cadastro',
-      cell: (c) => formatarData(c.dataCadastro),
-      exportValue: (c) => formatarData(c.dataCadastro),
-    },
-    {
-      header: 'Locações',
-      cell: (c) => <Badge variant="secondary">{c.quantidadeLocacoes}</Badge>,
-      exportValue: (c) => c.quantidadeLocacoes,
-    },
-    {
-      header: 'Tempo total',
-      cell: (c) => formatarTempo(c.tempoTotalMinutos),
-      exportValue: (c) => c.tempoTotalMinutos,
-    },
-    {
-      header: 'Total gasto',
-      cell: (c) => <span className="font-medium">{formatarMoeda(c.totalGasto)}</span>,
-      exportValue: (c) => c.totalGasto,
-    },
-    {
-      header: 'Última locação',
-      cell: (c) => formatarData(c.dataUltimaLocacao),
-      exportValue: (c) => formatarData(c.dataUltimaLocacao),
-    },
-    {
-      header: '1º carrinho locado',
-      cell: (c) => c.primeiroTipoCarrinho ?? '—',
-      exportValue: (c) => c.primeiroTipoCarrinho ?? '',
-    },
-  ]
+  function limpar() {
+    setCliente(null)
+    setCidade('')
+    setComplemento('')
+    setUf('')
+    setDataCadastroInicio('')
+    setDataCadastroFinal('')
+    setDataLocacaoInicio('')
+    setDataLocacaoFinal('')
+  }
+
+  const linhas = data ?? []
+  const totalLocacoes = linhas.reduce((soma, c) => soma + (c.qtdLocacoes ?? 0), 0)
+  const totalGasto = linhas.reduce((soma, c) => soma + (c.totalGasto ?? 0), 0)
 
   return (
     <>
       <PageHeader
         title="Relatório de Clientes"
-        description="Perfil de consumo dos clientes — locações, tempo de uso e total gasto, com filtros para tomada de decisão."
+        description="Mesma saída do relatório do legado: mesma procedure, mesmas colunas e formatos."
       />
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard titulo="Clientes no filtro" valor={resumo ? String(resumo.totalClientes) : '—'} icon={Users} />
-        <KpiCard titulo="Locações no período" valor={resumo ? String(resumo.totalLocacoes) : '—'} icon={ListChecks} />
-        <KpiCard titulo="Total gasto" valor={resumo ? formatarMoeda(resumo.totalGasto) : '—'} icon={DollarSign} />
-        <KpiCard
-          titulo="Ticket médio por cliente"
-          valor={resumo ? formatarMoeda(resumo.ticketMedioPorCliente) : '—'}
-          icon={TicketPercent}
-        />
-      </div>
-
       <Card className="mb-4">
-        <CardContent className="grid grid-cols-2 gap-4 pt-6 md:grid-cols-3 lg:grid-cols-6">
-          <div className="space-y-1.5">
-            <Label htmlFor="cidade">Cidade</Label>
-            <Input id="cidade" value={cidade} onChange={(e) => onChangeFiltro(setCidade)(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="uf">UF</Label>
-            <Input id="uf" maxLength={2} value={uf} onChange={(e) => onChangeFiltro(setUf)(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="dataCadastroInicio">Cadastro de</Label>
-            <Input
-              id="dataCadastroInicio"
-              type="date"
-              value={dataCadastroInicio}
-              onChange={(e) => onChangeFiltro(setDataCadastroInicio)(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="dataCadastroFinal">Cadastro até</Label>
-            <Input
-              id="dataCadastroFinal"
-              type="date"
-              value={dataCadastroFinal}
-              onChange={(e) => onChangeFiltro(setDataCadastroFinal)(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="dataLocacaoInicio">Locação de</Label>
-            <Input
-              id="dataLocacaoInicio"
-              type="date"
-              value={dataLocacaoInicio}
-              onChange={(e) => onChangeFiltro(setDataLocacaoInicio)(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="dataLocacaoFinal">Locação até</Label>
-            <Input
-              id="dataLocacaoFinal"
-              type="date"
-              value={dataLocacaoFinal}
-              onChange={(e) => onChangeFiltro(setDataLocacaoFinal)(e.target.value)}
-            />
-          </div>
+        <CardContent className="pt-6">
+          <form onSubmit={gerar} className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <div className="col-span-2 space-y-1.5">
+              <Label>Cliente</Label>
+              <ClienteAutocomplete clienteSelecionado={cliente} onSelecionar={setCliente} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="cidade">Cidade</Label>
+              <Input id="cidade" value={cidade} onChange={(e) => setCidade(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="uf">UF</Label>
+              <Input id="uf" maxLength={2} value={uf} onChange={(e) => setUf(e.target.value.toUpperCase())} />
+            </div>
+            <div className="col-span-2 space-y-1.5">
+              <Label htmlFor="complemento">Complemento</Label>
+              <Input id="complemento" value={complemento} onChange={(e) => setComplemento(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="dataCadastroInicio">Cadastro de</Label>
+              <Input
+                id="dataCadastroInicio"
+                type="date"
+                value={dataCadastroInicio}
+                onChange={(e) => setDataCadastroInicio(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="dataCadastroFinal">Cadastro até</Label>
+              <Input
+                id="dataCadastroFinal"
+                type="date"
+                value={dataCadastroFinal}
+                onChange={(e) => setDataCadastroFinal(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="dataLocacaoInicio">Locação de</Label>
+              <Input
+                id="dataLocacaoInicio"
+                type="date"
+                value={dataLocacaoInicio}
+                onChange={(e) => setDataLocacaoInicio(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="dataLocacaoFinal">Locação até</Label>
+              <Input
+                id="dataLocacaoFinal"
+                type="date"
+                value={dataLocacaoFinal}
+                onChange={(e) => setDataLocacaoFinal(e.target.value)}
+              />
+            </div>
+            <p className="col-span-full text-xs text-muted-foreground">
+              Cidade, complemento e UF precisam ser iguais ao cadastro (sem diferenciar maiúsculas), como no legado. Sem
+              nenhum filtro, o relatório traz todos os clientes e pode demorar.
+            </p>
+            <div className="col-span-full flex flex-wrap justify-end gap-2">
+              <Button type="button" variant="outline" onClick={limpar} disabled={isFetching}>
+                Limpar filtros
+              </Button>
+              <Button type="submit" disabled={isFetching}>
+                {isFetching ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
+                {isFetching ? 'Gerando...' : 'Gerar relatório'}
+              </Button>
+            </div>
+          </form>
         </CardContent>
       </Card>
 
-      <DataTable
-        columns={columns}
-        data={data?.itens ?? []}
-        rowKey={(c) => c.id}
-        isLoading={isLoading}
-        searchValue={nome}
-        onSearchChange={onChangeNome}
-        searchPlaceholder="Buscar por nome..."
-        emptyMessage="Nenhum cliente encontrado para os filtros selecionados."
-        pagina={data?.pagina ?? pagina}
-        totalPaginas={data?.totalPaginas ?? 0}
-        totalRegistros={data?.totalRegistros ?? 0}
-        tamanhoPagina={data?.tamanhoPagina ?? tamanhoPagina}
-        onPageChange={setPagina}
-        onTamanhoPaginaChange={(t) => {
-          setTamanhoPagina(t)
-          setPagina(1)
-        }}
-        exportFileName="relatorio-clientes"
-      />
+      {isFetching && (
+        <p className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" /> Gerando o relatório. Em períodos longos pode levar alguns minutos.
+        </p>
+      )}
+
+      {pedido && !isFetching && data && (
+        <>
+          <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <KpiCard titulo="Clientes" valor={String(linhas.length)} icon={Users} />
+            <KpiCard titulo="Locações" valor={String(totalLocacoes)} icon={ListChecks} />
+            <KpiCard titulo="Total gasto" valor={formatarMoeda(totalGasto)} icon={DollarSign} />
+            <KpiCard
+              titulo="Ticket médio por cliente"
+              valor={linhas.length > 0 ? formatarMoeda(totalGasto / linhas.length) : '—'}
+              icon={TicketPercent}
+            />
+          </div>
+          <p className="mb-2 text-xs text-muted-foreground">{filtrosAplicados}</p>
+          <RelatorioTabela
+            key={pedido.geracao}
+            colunas={colunasClientes}
+            linhas={linhas}
+            titulo="Relatório de Clientes"
+            nomeArquivo="relatorio-clientes"
+            subtitulo={filtrosAplicados}
+            colunaFixaPdf={1}
+          />
+        </>
+      )}
     </>
   )
 }

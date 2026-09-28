@@ -1,13 +1,24 @@
+using System.Data;
+using System.Data.Common;
 using BabyFrota.Data;
-using BabyFrota.Domain.Entities;
-using BabyFrota.DTOs.Common;
 using BabyFrota.DTOs.Relatorios;
 using Microsoft.EntityFrameworkCore;
 
 namespace BabyFrota.Services.Relatorios;
 
+/// <summary>
+/// Relatórios com a mesma saída do legado: chama as mesmas stored procedures (SPRelatorioClientes, SPHistoricoLocacoes)
+/// com os mesmos parâmetros que as páginas .aspx passavam, e refaz em C# o único relatório que o legado calculava em
+/// código (<see cref="OcupacaoCaixa"/>). Assim os dados saem iguais por construção, sem reescrever regra de SQL.
+/// </summary>
 public class RelatorioService : IRelatorioService
 {
+    /// <summary>
+    /// As procedures são pesadas em períodos longos (o legado chegou a desligar o limite no Detalhado). Cinco minutos
+    /// cobrem o uso normal sem deixar uma consulta presa para sempre.
+    /// </summary>
+    private const int TempoLimiteSegundos = 300;
+
     private readonly AppDbContext _db;
 
     public RelatorioService(AppDbContext db)
@@ -15,241 +26,140 @@ public class RelatorioService : IRelatorioService
         _db = db;
     }
 
-    // ---------- Relatório de Clientes ----------
-
-    private static IQueryable<Cliente> AplicarFiltroClientes(IQueryable<Cliente> query, RelatorioClientesFiltro filtro)
-    {
-        if (!string.IsNullOrWhiteSpace(filtro.Nome))
-            query = query.Where(c => c.Nome.Contains(filtro.Nome));
-
-        if (!string.IsNullOrWhiteSpace(filtro.Cidade))
-            query = query.Where(c => c.Cidade != null && c.Cidade.ToLower() == filtro.Cidade.ToLower());
-
-        if (!string.IsNullOrWhiteSpace(filtro.Uf))
-            query = query.Where(c => c.Uf != null && c.Uf.ToLower() == filtro.Uf.ToLower());
-
-        if (filtro.DataCadastroInicio.HasValue)
-            query = query.Where(c => c.DataCadastro >= filtro.DataCadastroInicio.Value);
-
-        if (filtro.DataCadastroFinal.HasValue)
-        {
-            var limite = filtro.DataCadastroFinal.Value.Date.AddDays(1);
-            query = query.Where(c => c.DataCadastro < limite);
-        }
-
-        if (filtro.DataLocacaoInicio.HasValue || filtro.DataLocacaoFinal.HasValue)
-        {
-            var inicio = filtro.DataLocacaoInicio;
-            var fim = filtro.DataLocacaoFinal.HasValue ? filtro.DataLocacaoFinal.Value.Date.AddDays(1) : (DateTime?)null;
-            query = query.Where(c => c.Locacoes.Any(l =>
-                (!inicio.HasValue || l.Dtentrega >= inicio.Value) &&
-                (!fim.HasValue || l.Dtentrega < fim.Value)));
-        }
-
-        return query;
-    }
-
-    public async Task<PagedResult<ClienteRelatorioDto>> ListarClientesAsync(RelatorioClientesFiltro filtro, CancellationToken ct = default)
-    {
-        var pagina = filtro.Pagina < 1 ? 1 : filtro.Pagina;
-        var tamanhoPagina = filtro.TamanhoPagina is < 1 or > 500 ? 10 : filtro.TamanhoPagina;
-
-        var query = AplicarFiltroClientes(_db.Clientes.AsQueryable(), filtro);
-        var totalRegistros = await query.CountAsync(ct);
-
-        // Repetido inline (não extraído para variável de expressão) para o EF Core traduzir em SQL.
-        var inicioLoc = filtro.DataLocacaoInicio;
-        var fimLocExclusive = filtro.DataLocacaoFinal.HasValue ? filtro.DataLocacaoFinal.Value.Date.AddDays(1) : (DateTime?)null;
-
-        var itens = await query
-            .OrderBy(c => c.Nome)
-            .Skip((pagina - 1) * tamanhoPagina)
-            .Take(tamanhoPagina)
-            .Select(c => new ClienteRelatorioDto
+    public Task<List<ClienteRelatorioDto>> ListarClientesAsync(RelatorioClientesFiltro filtro, CancellationToken ct = default)
+        => ExecutarProcedureAsync(
+            "dbo.SPRelatorioClientes",
+            comando =>
             {
-                Id = c.Cdcliente,
-                Nome = c.Nome,
-                Cpf = c.Cpf,
-                Email = c.Email,
-                Cidade = c.Cidade,
-                Uf = c.Uf,
-                Telefone = !string.IsNullOrEmpty(c.Celular)
-                    ? (c.Dddcelular ?? "") + " " + c.Celular
-                    : c.Dddtelefone + " " + c.Telefone,
-                DataCadastro = c.DataCadastro,
-                QuantidadeLocacoes = c.Locacoes.Count(l =>
-                    (!inicioLoc.HasValue || l.Dtentrega >= inicioLoc.Value) &&
-                    (!fimLocExclusive.HasValue || l.Dtentrega < fimLocExclusive.Value)),
-                TempoTotalMinutos = c.Locacoes.Where(l =>
-                        (!inicioLoc.HasValue || l.Dtentrega >= inicioLoc.Value) &&
-                        (!fimLocExclusive.HasValue || l.Dtentrega < fimLocExclusive.Value))
-                    .Sum(l => (int?)l.Tempo) ?? 0,
-                TotalGasto = c.Locacoes.Where(l =>
-                        (!inicioLoc.HasValue || l.Dtentrega >= inicioLoc.Value) &&
-                        (!fimLocExclusive.HasValue || l.Dtentrega < fimLocExclusive.Value))
-                    .Sum(l => (decimal?)l.ValorTotal) ?? 0,
-                DataUltimaLocacao = c.Locacoes
-                    .OrderByDescending(l => l.Dtentrega)
-                    .Select(l => (DateTime?)l.Dtentrega)
-                    .FirstOrDefault(),
-                PrimeiroTipoCarrinho = c.Locacoes
-                    .OrderBy(l => l.Dtentrega)
-                    .Select(l => l.CdcarrinhoNavigation.CdtipoCarrinhoNavigation.Descricao)
-                    .FirstOrDefault(),
-            })
+                // Como a página do legado: texto vazio vai como '' (a procedure testa "= ''"; nulo não filtraria nada)
+                // e cliente não escolhido vai como 0.
+                Parametro(comando, "@CDCliente", DbType.Int32, filtro.ClienteId ?? 0);
+                Parametro(comando, "@Cidade", DbType.String, filtro.Cidade ?? string.Empty);
+                Parametro(comando, "@Complemento", DbType.String, filtro.Complemento ?? string.Empty);
+                Parametro(comando, "@DTInicio", DbType.DateTime, filtro.DataCadastroInicio?.Date);
+                Parametro(comando, "@DTFinal", DbType.DateTime, filtro.DataCadastroFinal?.Date);
+                Parametro(comando, "@uf", DbType.String, filtro.Uf ?? string.Empty);
+                Parametro(comando, "@DTInicioLocacao", DbType.DateTime, filtro.DataLocacaoInicio?.Date);
+                Parametro(comando, "@DTFinalLocacao", DbType.DateTime, filtro.DataLocacaoFinal?.Date);
+            },
+            LeituraProcedures.Cliente,
+            ct);
+
+    public async Task<List<HistoricoOcupacaoDto>> ListarHistoricoOcupacaoAsync(RelatorioHistoricoFiltro filtro, CancellationToken ct = default)
+    {
+        var (inicio, fim, cdCarrinho, cdTipoCarrinho) = FiltroDoHistorico(filtro);
+        // Igual ao legado: o último dia vai até o último milissegundo.
+        var dataFinal = fim.AddDays(1).AddMilliseconds(-1);
+
+        var caixas = await _db.CaixaMovimentos
+            .Where(c => c.Dtabertura >= inicio && c.Dtfechamento != null && c.Dtfechamento <= dataFinal)
+            .OrderBy(c => c.CdcaixaMovimento)
+            .Select(c => new CaixaOcupacao(c.CdcaixaMovimento, c.Dtabertura, c.Dtfechamento!.Value))
             .ToListAsync(ct);
 
-        return new PagedResult<ClienteRelatorioDto>
-        {
-            Itens = itens,
-            Pagina = pagina,
-            TamanhoPagina = tamanhoPagina,
-            TotalRegistros = totalRegistros,
-        };
-    }
+        var query = _db.Locacoes.Where(l => l.Dtentrega >= inicio && l.Dtdevolucao != null && l.Dtentrega <= dataFinal);
+        if (cdCarrinho != 0)
+            query = query.Where(l => l.Cdcarrinho == cdCarrinho);
+        if (cdTipoCarrinho != 0)
+            query = query.Where(l => l.CdcarrinhoNavigation.CdtipoCarrinho == cdTipoCarrinho);
+        if (filtro.ClienteId is > 0)
+            query = query.Where(l => l.Cdcliente == filtro.ClienteId.Value);
+        if (filtro.UsuarioEntregaId is > 0)
+            query = query.Where(l => l.CdusuarioEntrega == filtro.UsuarioEntregaId.Value);
+        if (filtro.UsuarioDevolucaoId is > 0)
+            query = query.Where(l => l.CdusuarioDevolucao == filtro.UsuarioDevolucaoId.Value);
 
-    public async Task<RelatorioClientesResumoDto> ObterResumoClientesAsync(RelatorioClientesFiltro filtro, CancellationToken ct = default)
-    {
-        var query = AplicarFiltroClientes(_db.Clientes.AsQueryable(), filtro);
-
-        var inicioLoc = filtro.DataLocacaoInicio;
-        var fimLocExclusive = filtro.DataLocacaoFinal.HasValue ? filtro.DataLocacaoFinal.Value.Date.AddDays(1) : (DateTime?)null;
-
-        var totalClientes = await query.CountAsync(ct);
-
-        var locacoesFiltradas = query.SelectMany(c => c.Locacoes.Where(l =>
-            (!inicioLoc.HasValue || l.Dtentrega >= inicioLoc.Value) &&
-            (!fimLocExclusive.HasValue || l.Dtentrega < fimLocExclusive.Value)));
-
-        var totalLocacoes = await locacoesFiltradas.CountAsync(ct);
-        var totalGasto = await locacoesFiltradas.SumAsync(l => (decimal?)l.ValorTotal, ct) ?? 0;
-
-        return new RelatorioClientesResumoDto
-        {
-            TotalClientes = totalClientes,
-            TotalLocacoes = totalLocacoes,
-            TotalGasto = totalGasto,
-            TicketMedioPorCliente = totalClientes == 0 ? 0 : totalGasto / totalClientes,
-        };
-    }
-
-    // ---------- Histórico de Locações ----------
-
-    /// <summary>Janela padrão aplicada quando nenhuma data é informada, para nunca variar sobre a tabela inteira.</summary>
-    private const int DiasPadraoSemFiltroDeData = 90;
-
-    private static IQueryable<Locacao> AplicarFiltroHistorico(IQueryable<Locacao> query, RelatorioHistoricoFiltro filtro)
-    {
-        if (filtro.DataEntregaInicio.HasValue)
-        {
-            query = query.Where(l => l.Dtentrega >= filtro.DataEntregaInicio.Value);
-        }
-        else if (!filtro.DataEntregaFinal.HasValue)
-        {
-            // Nenhuma data informada: evita full-scan/aggregate sobre a tabela inteira de Locação
-            // (pode ter centenas de milhares de linhas em produção) limitando aos últimos 90 dias por padrão.
-            var limiteInferiorPadrao = DateTime.Now.AddDays(-DiasPadraoSemFiltroDeData);
-            query = query.Where(l => l.Dtentrega >= limiteInferiorPadrao);
-        }
-
-        if (filtro.DataEntregaFinal.HasValue)
-        {
-            var limite = filtro.DataEntregaFinal.Value.Date.AddDays(1);
-            query = query.Where(l => l.Dtentrega < limite);
-        }
-
-        if (!string.IsNullOrWhiteSpace(filtro.ClienteNome))
-            query = query.Where(l => l.CdclienteNavigation.Nome.Contains(filtro.ClienteNome));
-
-        if (filtro.CarrinhoId.HasValue)
-            query = query.Where(l => l.Cdcarrinho == filtro.CarrinhoId.Value);
-        else if (filtro.TipoCarrinhoId.HasValue) // carrinho específico tem prioridade sobre tipo, igual ao legado
-            query = query.Where(l => l.CdcarrinhoNavigation.CdtipoCarrinho == filtro.TipoCarrinhoId.Value);
-
-        if (filtro.SomenteEmAndamento == true)
-            query = query.Where(l => l.Dtdevolucao == null);
-
-        return query;
-    }
-
-    public async Task<PagedResult<LocacaoHistoricoDto>> ListarHistoricoAsync(RelatorioHistoricoFiltro filtro, CancellationToken ct = default)
-    {
-        var pagina = filtro.Pagina < 1 ? 1 : filtro.Pagina;
-        var tamanhoPagina = filtro.TamanhoPagina is < 1 or > 500 ? 10 : filtro.TamanhoPagina;
-
-        var query = AplicarFiltroHistorico(_db.Locacoes.AsQueryable(), filtro);
-        var totalRegistros = await query.CountAsync(ct);
-
-        var itens = await query
-            .OrderByDescending(l => l.Dtentrega)
-            .Skip((pagina - 1) * tamanhoPagina)
-            .Take(tamanhoPagina)
-            .Select(l => new LocacaoHistoricoDto
+        var locacoes = await query
+            .OrderBy(l => l.Cdlocacao)
+            .Select(l => new LocacaoOcupacao
             {
                 Id = l.Cdlocacao,
-                DataEntrega = l.Dtentrega,
-                DataDevolucao = l.Dtdevolucao,
-                ClienteId = l.Cdcliente,
-                ClienteNome = l.CdclienteNavigation.Nome,
-                CarrinhoId = l.Cdcarrinho,
-                CarrinhoDescricao = l.CdcarrinhoNavigation.Descricao,
-                TipoCarrinhoDescricao = l.CdcarrinhoNavigation.CdtipoCarrinhoNavigation.Descricao,
-                TempoMinutos = l.Tempo,
+                DtEntrega = l.Dtentrega,
+                DtDevolucao = l.Dtdevolucao!.Value,
                 ValorTotal = l.ValorTotal,
-                Desconto = l.Desconto,
-                Troco = l.Troco,
-                FormaPagamento = l.Parcelas
-                    .OrderBy(p => p.Nrparcela)
-                    .Select(p => p.CdformaRecebimentoNavigation.Nome)
-                    .FirstOrDefault() ?? "-",
-                QuantidadeParcelas = l.Parcelas.Count(),
-                UsuarioEntregaNome = l.CdusuarioEntregaNavigation.Nome,
-                UsuarioDevolucaoNome = l.CdusuarioDevolucaoNavigation != null ? l.CdusuarioDevolucaoNavigation.Nome : null,
-                EmAndamento = l.Dtdevolucao == null,
+                DescricaoCarrinho = l.CdcarrinhoNavigation.Descricao,
+                TipoCarrinho = l.CdcarrinhoNavigation.CdtipoCarrinhoNavigation.Descricao,
             })
             .ToListAsync(ct);
 
-        return new PagedResult<LocacaoHistoricoDto>
-        {
-            Itens = itens,
-            Pagina = pagina,
-            TamanhoPagina = tamanhoPagina,
-            TotalRegistros = totalRegistros,
-        };
+        return OcupacaoCaixa.Calcular(caixas, locacoes, filtroPorCarrinho: cdCarrinho != 0, filtroPorTipo: cdTipoCarrinho != 0);
     }
 
-    public async Task<RelatorioHistoricoResumoDto> ObterResumoHistoricoAsync(RelatorioHistoricoFiltro filtro, CancellationToken ct = default)
+    public Task<List<HistoricoLocacaoDetalhadoDto>> ListarHistoricoDetalhadoAsync(RelatorioHistoricoFiltro filtro, CancellationToken ct = default)
     {
-        var query = AplicarFiltroHistorico(_db.Locacoes.AsQueryable(), filtro);
+        var (inicio, fim, cdCarrinho, cdTipoCarrinho) = FiltroDoHistorico(filtro);
 
-        var totalLocacoes = await query.CountAsync(ct);
-        var faturamento = await query.SumAsync(l => (decimal?)l.ValorTotal, ct) ?? 0;
-        var tempoMedio = totalLocacoes == 0
-            ? 0
-            : await query.Where(l => l.Tempo != null).AverageAsync(l => (double?)l.Tempo, ct) ?? 0;
-
-        return new RelatorioHistoricoResumoDto
-        {
-            TotalLocacoes = totalLocacoes,
-            Faturamento = faturamento,
-            TicketMedio = totalLocacoes == 0 ? 0 : faturamento / totalLocacoes,
-            TempoMedioMinutos = tempoMedio,
-        };
-    }
-
-    public async Task<List<FaturamentoPorDiaDto>> ObterFaturamentoPorDiaAsync(RelatorioHistoricoFiltro filtro, CancellationToken ct = default)
-    {
-        var query = AplicarFiltroHistorico(_db.Locacoes.AsQueryable(), filtro);
-
-        return await query
-            .GroupBy(l => l.Dtentrega.Date)
-            .Select(g => new FaturamentoPorDiaDto
+        return ExecutarProcedureAsync(
+            "dbo.SPHistoricoLocacoes",
+            comando =>
             {
-                Data = g.Key,
-                Quantidade = g.Count(),
-                Faturamento = g.Sum(l => (decimal?)l.ValorTotal) ?? 0,
-            })
-            .OrderBy(d => d.Data)
+                Parametro(comando, "@DTInicioEntrega", DbType.DateTime, inicio);
+                Parametro(comando, "@DTFinalEntrega", DbType.DateTime, fim);
+                Parametro(comando, "@CDCarrinho", DbType.Int32, cdCarrinho);
+                Parametro(comando, "@CDTipoCarrinho", DbType.Int32, cdTipoCarrinho);
+                Parametro(comando, "@CDCliente", DbType.Int32, filtro.ClienteId ?? 0);
+                Parametro(comando, "@CDUsuarioEntrega", DbType.Int32, filtro.UsuarioEntregaId ?? 0);
+                Parametro(comando, "@CDUsuarioDevolucao", DbType.Int32, filtro.UsuarioDevolucaoId ?? 0);
+            },
+            LeituraProcedures.Locacao,
+            ct);
+    }
+
+    public async Task<List<HistoricoLocacaoSimplificadoDto>> ListarHistoricoSimplificadoAsync(RelatorioHistoricoFiltro filtro, CancellationToken ct = default)
+        => (await ListarHistoricoDetalhadoAsync(filtro, ct)).Select(LeituraProcedures.Simplificado).ToList();
+
+    public Task<List<UsuarioFiltroDto>> ListarUsuariosAsync(CancellationToken ct = default)
+        => _db.Usuarios
+            .OrderBy(u => u.Nome)
+            .Select(u => new UsuarioFiltroDto { Id = u.Cdusuario, Nome = u.Nome })
             .ToListAsync(ct);
+
+    /// <summary>
+    /// As duas datas são obrigatórias, como no legado. Com carrinho escolhido, o tipo vai como 0: as páginas do legado
+    /// zeravam o tipo nesse caso, e as procedures aplicam os dois filtros juntos.
+    /// </summary>
+    private static (DateTime Inicio, DateTime Fim, int CdCarrinho, int CdTipoCarrinho) FiltroDoHistorico(RelatorioHistoricoFiltro filtro)
+    {
+        if (filtro.DataEntregaInicio is null || filtro.DataEntregaFinal is null)
+            throw new InvalidOperationException("Informe a data inicial e a data final da entrega.");
+
+        var cdCarrinho = filtro.CarrinhoId ?? 0;
+        var cdTipoCarrinho = cdCarrinho != 0 ? 0 : filtro.TipoCarrinhoId ?? 0;
+        return (filtro.DataEntregaInicio.Value.Date, filtro.DataEntregaFinal.Value.Date, cdCarrinho, cdTipoCarrinho);
+    }
+
+    private async Task<List<T>> ExecutarProcedureAsync<T>(
+        string procedure, Action<DbCommand> preencherParametros, Func<LeitorDeColunas, T> lerLinha, CancellationToken ct)
+    {
+        var conexao = _db.Database.GetDbConnection();
+        await _db.Database.OpenConnectionAsync(ct);
+        try
+        {
+            await using var comando = conexao.CreateCommand();
+            comando.CommandText = procedure;
+            comando.CommandType = CommandType.StoredProcedure;
+            comando.CommandTimeout = TempoLimiteSegundos;
+            preencherParametros(comando);
+
+            await using var reader = await comando.ExecuteReaderAsync(ct);
+            var leitor = new LeitorDeColunas(reader);
+            var linhas = new List<T>();
+            while (await reader.ReadAsync(ct))
+                linhas.Add(lerLinha(leitor));
+            return linhas;
+        }
+        finally
+        {
+            await _db.Database.CloseConnectionAsync();
+        }
+    }
+
+    private static void Parametro(DbCommand comando, string nome, DbType tipo, object? valor)
+    {
+        var parametro = comando.CreateParameter();
+        parametro.ParameterName = nome;
+        parametro.DbType = tipo;
+        parametro.Value = valor ?? DBNull.Value;
+        comando.Parameters.Add(parametro);
     }
 }
