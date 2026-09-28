@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
+import { RotaComPerfil } from '@/components/layout/RotaComPerfil'
+import { PERFIL_ADMINISTRADOR, PERFIS_SUPERVISAO } from '@/lib/perfis'
 import { LoginPage } from '@/pages/LoginPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { TiposCarrinhoPage } from '@/pages/cadastros/TiposCarrinhoPage'
@@ -28,10 +30,18 @@ function App() {
           <Route path="/" element={<DashboardPage />} />
 
           <Route path="/clientes" element={<ClientesPage />} />
-          <Route path="/usuarios" element={<UsuariosPage />} />
-          <Route path="/carrinhos" element={<CarrinhosPage />} />
-          <Route path="/tipos-carrinho" element={<TiposCarrinhoPage />} />
-          <Route path="/empresa" element={<EmpresaPage />} />
+
+          {/* Igual ao legado: só Administrador gerencia usuários e os dados da empresa. */}
+          <Route element={<RotaComPerfil perfis={[PERFIL_ADMINISTRADOR]} />}>
+            <Route path="/usuarios" element={<UsuariosPage />} />
+            <Route path="/empresa" element={<EmpresaPage />} />
+          </Route>
+
+          {/* Igual ao legado: Administrador e Gerente cadastram carrinho e tipo de carrinho. */}
+          <Route element={<RotaComPerfil perfis={PERFIS_SUPERVISAO} />}>
+            <Route path="/carrinhos" element={<CarrinhosPage />} />
+            <Route path="/tipos-carrinho" element={<TiposCarrinhoPage />} />
+          </Route>
 
           <Route path="/locacao/entrega" element={<EntregaPage />} />
           {/* A troca e a devolução agora abrem ao clicar numa locação em andamento na Entrega. */}
@@ -43,9 +53,12 @@ function App() {
           <Route path="/caixa/suprimento-sangria" element={<SuprimentoSangriaPage />} />
           <Route path="/caixa/fluxo" element={<FluxoCaixaPage />} />
 
-          <Route path="/etiquetas" element={<EtiquetasPage />} />
-          <Route path="/relatorios/clientes" element={<RelatorioClientesPage />} />
-          <Route path="/relatorios/historico" element={<HistoricoLocacoesPage />} />
+          {/* Igual ao legado: Administrador e Gerente imprimem etiquetas e veem os relatórios. */}
+          <Route element={<RotaComPerfil perfis={PERFIS_SUPERVISAO} />}>
+            <Route path="/etiquetas" element={<EtiquetasPage />} />
+            <Route path="/relatorios/clientes" element={<RelatorioClientesPage />} />
+            <Route path="/relatorios/historico" element={<HistoricoLocacoesPage />} />
+          </Route>
         </Route>
       </Route>
 

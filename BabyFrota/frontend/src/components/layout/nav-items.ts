@@ -20,11 +20,14 @@ import {
   ChartNoAxesCombined,
   type LucideIcon,
 } from 'lucide-react'
+import { PERFIL_ADMINISTRADOR, PERFIS_SUPERVISAO } from '@/lib/perfis'
 
 export interface NavItem {
   label: string
   to: string
   icon: LucideIcon
+  /** Perfis que veem este item, igual ao Default.aspx do legado (menuXxx.Visible). Ausente = todo mundo logado vê. */
+  perfis?: number[]
 }
 
 export interface NavGroup {
@@ -49,10 +52,10 @@ export const navGroups: NavGroup[] = [
     icon: FolderOpen,
     items: [
       { label: 'Clientes', to: '/clientes', icon: Users },
-      { label: 'Usuários', to: '/usuarios', icon: UserCog },
-      { label: 'Carrinhos', to: '/carrinhos', icon: Baby },
-      { label: 'Tipos de Carrinho', to: '/tipos-carrinho', icon: Tag },
-      { label: 'Empresa', to: '/empresa', icon: Building2 },
+      { label: 'Usuários', to: '/usuarios', icon: UserCog, perfis: [PERFIL_ADMINISTRADOR] },
+      { label: 'Carrinhos', to: '/carrinhos', icon: Baby, perfis: PERFIS_SUPERVISAO },
+      { label: 'Tipos de Carrinho', to: '/tipos-carrinho', icon: Tag, perfis: PERFIS_SUPERVISAO },
+      { label: 'Empresa', to: '/empresa', icon: Building2, perfis: [PERFIL_ADMINISTRADOR] },
     ],
   },
   {
@@ -78,9 +81,9 @@ export const navGroups: NavGroup[] = [
     label: 'Relatórios & BI',
     icon: ChartColumn,
     items: [
-      { label: 'Etiquetas', to: '/etiquetas', icon: Printer },
-      { label: 'Relatório de Clientes', to: '/relatorios/clientes', icon: FileBarChart },
-      { label: 'Histórico de Locações', to: '/relatorios/historico', icon: History },
+      { label: 'Etiquetas', to: '/etiquetas', icon: Printer, perfis: PERFIS_SUPERVISAO },
+      { label: 'Relatório de Clientes', to: '/relatorios/clientes', icon: FileBarChart, perfis: PERFIS_SUPERVISAO },
+      { label: 'Histórico de Locações', to: '/relatorios/historico', icon: History, perfis: PERFIS_SUPERVISAO },
     ],
   },
 ]

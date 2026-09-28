@@ -1,10 +1,21 @@
-import { useEffect, useId } from 'react'
+import { useEffect, useId, useMemo } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { ChevronDown, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/store/auth-store'
 import { useUiStore } from '@/store/ui-store'
 import { navGroups, type NavGroup, type NavItem } from './nav-items'
+
+/** Só os itens que o perfil do usuário pode ver (igual ao Default.aspx do legado), e some o grupo se ficar vazio. */
+function gruposVisiveis(perfilId: number | undefined): NavGroup[] {
+  return navGroups
+    .map((grupo) => ({
+      ...grupo,
+      items: grupo.items.filter((item) => !item.perfis || (perfilId !== undefined && item.perfis.includes(perfilId))),
+    }))
+    .filter((grupo) => grupo.items.length > 0)
+}
 
 function rotaAtiva(pathname: string, to: string) {
   return to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(`${to}/`)
@@ -117,17 +128,19 @@ function GrupoRecolhivel({ grupo, rotulo, compacto }: { grupo: NavGroup; rotulo:
 function NavConteudo({ compacto }: { compacto: boolean }) {
   const { pathname } = useLocation()
   const abrirGrupo = useUiStore((s) => s.abrirGrupo)
+  const perfilId = useAuthStore((s) => s.usuario?.perfilId)
+  const grupos = useMemo(() => gruposVisiveis(perfilId), [perfilId])
 
   // Ao navegar (ou entrar direto por uma URL), garante aberto o grupo da rota atual. Só age quando a rota muda,
   // então quem fechou o grupo à mão não o vê reabrir sozinho.
   useEffect(() => {
-    const ativo = navGroups.find((g) => g.label && grupoAtivo(g, pathname))
+    const ativo = grupos.find((g) => g.label && grupoAtivo(g, pathname))
     if (ativo?.label) abrirGrupo(ativo.label)
-  }, [pathname, abrirGrupo])
+  }, [pathname, abrirGrupo, grupos])
 
   return (
     <nav aria-label="Navegação principal" className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-2 pb-4">
-      {navGroups.map((grupo) =>
+      {grupos.map((grupo) =>
         grupo.label === null ? (
           <div key="fixo" className="pb-2">
             {grupo.items.map((item) => (

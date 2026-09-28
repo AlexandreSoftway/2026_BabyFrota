@@ -17,6 +17,7 @@ public class EmpresaController : ControllerBase
         _service = service;
     }
 
+    // Sem restrição de perfil: o comprovante impresso na entrega/devolução usa esses dados, para qualquer usuário logado.
     [HttpGet]
     public async Task<ActionResult<EmpresaDto>> Obter(CancellationToken ct)
     {
@@ -24,7 +25,9 @@ public class EmpresaController : ControllerBase
         return empresa is null ? NotFound() : Ok(empresa);
     }
 
+    // Igual ao legado (EC.aspx): editar o cadastro da empresa é só para Administrador.
     [HttpPut]
+    [Authorize(Policy = "Administrador")]
     public async Task<ActionResult<EmpresaDto>> Salvar([FromBody] EmpresaUpsertRequest request, CancellationToken ct)
         => Ok(await _service.SalvarAsync(request, ct));
 }

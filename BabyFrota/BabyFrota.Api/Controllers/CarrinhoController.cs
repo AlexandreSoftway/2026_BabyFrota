@@ -35,7 +35,10 @@ public class CarrinhoController : ControllerBase
         return item is null ? NotFound() : Ok(item);
     }
 
+    // A listagem (acima) fica livre para qualquer usuário logado: a tela Locações também usa como filtro. Igual ao
+    // legado, quem é só para Administrador/Gerente é o CADASTRO — criar, editar e excluir carrinho.
     [HttpPost]
+    [Authorize(Policy = "Supervisor")]
     public async Task<ActionResult<CarrinhoDto>> Criar([FromBody] CarrinhoUpsertRequest request, CancellationToken ct)
     {
         var criado = await _service.CriarAsync(request, ct);
@@ -43,10 +46,12 @@ public class CarrinhoController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Policy = "Supervisor")]
     public async Task<ActionResult<CarrinhoDto>> Atualizar(int id, [FromBody] CarrinhoUpsertRequest request, CancellationToken ct)
         => Ok(await _service.AtualizarAsync(id, request, ct));
 
     [HttpDelete("{id:int}")]
+    [Authorize(Policy = "Supervisor")]
     public async Task<IActionResult> Excluir(int id, CancellationToken ct)
     {
         await _service.ExcluirAsync(id, ct);

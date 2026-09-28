@@ -1,4 +1,6 @@
 ﻿using BabyFrota.Services.Common;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 
@@ -43,5 +45,33 @@ public class ApiExceptionHandler : IExceptionHandler
         }, cancellationToken);
 
         return true;
+    }
+}
+
+/// <summary>
+/// Corpo do 403 quando uma política de perfil (<see cref="Security.PerfilRequirement"/>) recusa o acesso — mesmo formato
+/// ProblemDetails do <see cref="ApiExceptionHandler"/>, para a tela mostrar uma mensagem, e não um erro genérico.
+/// </summary>
+public class AcessoNegadoResultHandler : IAuthorizationMiddlewareResultHandler
+{
+    private readonly AuthorizationMiddlewareResultHandler _padrao = new();
+
+    public async Task HandleAsync(
+        RequestDelegate next, HttpContext context, AuthorizationPolicy policy, PolicyAuthorizationResult authorizeResult)
+    {
+        if (!authorizeResult.Forbidden)
+        {
+            await _padrao.HandleAsync(next, context, policy, authorizeResult);
+            return;
+        }
+
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await context.Response.WriteAsJsonAsync(new ProblemDetails
+        {
+            Status = StatusCodes.Status403Forbidden,
+            Title = "Acesso negado",
+            Detail = "Seu perfil não tem permissão para acessar este recurso.",
+            Instance = context.Request.Path,
+        });
     }
 }

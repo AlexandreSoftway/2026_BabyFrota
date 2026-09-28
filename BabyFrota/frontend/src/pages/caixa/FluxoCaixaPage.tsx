@@ -11,14 +11,12 @@ import { buscarFluxoCaixaCompleto, useFluxoCaixa, useFluxoCaixaResumo } from '@/
 import { FORMA_DINHEIRO_ID, type FluxoCaixa, type FluxoCaixaFiltro } from '@/features/caixa/types'
 import { useFormasRecebimento } from '@/features/locacoes/api'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { PERFIS_SUPERVISAO } from '@/lib/perfis'
 import { extrairMensagemErro, formatarDataHora, formatarMoeda } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth-store'
 import { toast } from '@/stores/toast-store'
 
 const TAMANHO_PAGINA_PADRAO = 10
-
-/** Administrador e Gerente. Só serve para o aviso de escopo na tela: quem restringe os caixas é o servidor. */
-const PERFIS_SUPERVISAO = [1, 2]
 
 function KpiCard({
   titulo,

@@ -1,10 +1,14 @@
 using System.Text;
 using BabyFrota.Api.Middleware;
 using BabyFrota.Api.OpenApi;
+using BabyFrota.Api.Security;
 using BabyFrota.Data;
+using BabyFrota.Domain.Enums;
 using BabyFrota.Services;
 using BabyFrota.Services.Seed;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -54,7 +58,17 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-builder.Services.AddAuthorization();
+// ---------- Autorização por perfil (igual ao legado: menus/páginas por EPerfil) ----------
+// O handler consulta o perfil atual no banco a cada requisição, não o claim "perfilId" do token — ver PerfilAuthorizationHandler.
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("Administrador", policy => policy.Requirements.Add(new PerfilRequirement((int)PerfilSistema.Administrador)));
+    options.AddPolicy(
+        "Supervisor",
+        policy => policy.Requirements.Add(new PerfilRequirement((int)PerfilSistema.Administrador, (int)PerfilSistema.Gerente)));
+});
+builder.Services.AddScoped<IAuthorizationHandler, PerfilAuthorizationHandler>();
+builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, AcessoNegadoResultHandler>();
 
 // ---------- Tratamento de exceções padronizado (ProblemDetails) ----------
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();

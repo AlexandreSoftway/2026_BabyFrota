@@ -6,9 +6,10 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace BabyFrota.Api.Controllers;
 
+// Igual ao legado (RelatorioClientes.aspx, RelatorioHistoricoXxx.aspx): relatório é só para Administrador e Gerente.
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Policy = "Supervisor")]
 public class RelatorioController : ControllerBase
 {
     private readonly IRelatorioService _service;

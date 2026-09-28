@@ -6,8 +6,9 @@ namespace BabyFrota.Services.Common;
 
 /// <summary>
 /// Consulta do perfil direto no banco, e não pelo claim do token: uma troca de perfil vale na hora, sem esperar novo login.
+/// Público porque a Api também usa (<c>PerfilAuthorizationHandler</c>, que trava rota inteira por perfil, igual ao legado).
 /// </summary>
-internal static class PerfilUsuarioExtensions
+public static class PerfilUsuarioExtensions
 {
     /// <summary>Perfil do usuário; 0 (sem perfil algum) se o usuário não existir.</summary>
     public static Task<int> ObterPerfilIdAsync(this AppDbContext db, int usuarioId, CancellationToken ct)

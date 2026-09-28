@@ -27,14 +27,12 @@ import {
 import { useImprimirComprovante } from '@/features/locacoes/comprovante'
 import type { Locacao } from '@/features/locacoes/types'
 import { useAgora } from '@/hooks/use-agora'
+import { PERFIL_ADMINISTRADOR } from '@/lib/perfis'
 import { cn, extrairMensagemErro, formatarDataHora, formatarMinutos, formatarMoeda, tempoDecorrido } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth-store'
 import { toast } from '@/stores/toast-store'
 
 export type AbaLocacao = 'devolucao' | 'troca'
-
-/** Espelha PerfilSistema.Administrador da API — a regra é validada no servidor; aqui só evita a tentativa. */
-const PERFIL_ADMINISTRADOR = 1
 /** Dinheiro é o id 1 da tabela FormaRecebimento; o legado também já vinha com ele marcado. */
 const FORMA_PADRAO_ID = 1
 

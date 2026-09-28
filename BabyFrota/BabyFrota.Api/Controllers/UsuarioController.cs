@@ -6,9 +6,10 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace BabyFrota.Api.Controllers;
 
+// Igual ao legado (CadastroUsuario.aspx): a tela inteira, e não só criar/editar, é só para Administrador.
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Policy = "Administrador")]
 public class UsuarioController : ControllerBase
 {
     private readonly IUsuarioService _service;
