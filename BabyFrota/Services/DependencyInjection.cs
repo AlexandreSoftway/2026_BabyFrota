@@ -1,4 +1,5 @@
 ﻿using BabyFrota.Services.Auth;
+using BabyFrota.Services.Bi;
 using BabyFrota.Services.Caixas;
 using BabyFrota.Services.Carrinhos;
 using BabyFrota.Services.Ceps;
@@ -36,6 +37,7 @@ public static class DependencyInjection
         services.AddScoped<ILocacaoService, LocacaoService>();
         services.AddScoped<ILocacaoConsultaService, LocacaoConsultaService>();
         services.AddScoped<IRelatorioService, RelatorioService>();
+        services.AddScoped<IBiService, BiService>();
 
         services.AddHttpClient("ViaCep", client =>
         {

@@ -1,24 +1,36 @@
+import { lazy, type ComponentType } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
 import { RotaComPerfil } from '@/components/layout/RotaComPerfil'
 import { PERFIL_ADMINISTRADOR, PERFIS_SUPERVISAO } from '@/lib/perfis'
 import { LoginPage } from '@/pages/LoginPage'
-import { DashboardPage } from '@/pages/DashboardPage'
-import { TiposCarrinhoPage } from '@/pages/cadastros/TiposCarrinhoPage'
-import { UsuariosPage } from '@/pages/cadastros/UsuariosPage'
-import { ClientesPage } from '@/pages/cadastros/ClientesPage'
-import { CarrinhosPage } from '@/pages/cadastros/CarrinhosPage'
-import { EmpresaPage } from '@/pages/EmpresaPage'
-import { AberturaCaixaPage } from '@/pages/caixa/AberturaCaixaPage'
-import { FechamentoCaixaPage } from '@/pages/caixa/FechamentoCaixaPage'
-import { SuprimentoSangriaPage } from '@/pages/caixa/SuprimentoSangriaPage'
-import { FluxoCaixaPage } from '@/pages/caixa/FluxoCaixaPage'
-import { EntregaPage } from '@/pages/locacao/EntregaPage'
-import { LocacoesPage } from '@/pages/locacao/LocacoesPage'
-import { RelatorioClientesPage } from '@/pages/relatorios/RelatorioClientesPage'
-import { HistoricoLocacoesPage } from '@/pages/relatorios/HistoricoLocacoesPage'
-import { EtiquetasPage } from '@/pages/EtiquetasPage'
+
+/**
+ * Cada tela é baixada só quando é aberta pela primeira vez, em vez de tudo na entrada do sistema: o pacote inicial fica
+ * bem menor e bibliotecas pesadas (gráficos, por exemplo) só chegam às telas que as usam. As telas têm export nomeado,
+ * daí o ajudante.
+ */
+function tela<K extends string>(carregar: () => Promise<Record<K, ComponentType>>, nome: K) {
+  return lazy(() => carregar().then((modulo) => ({ default: modulo[nome] })))
+}
+
+const DashboardPage = tela(() => import('@/pages/DashboardPage'), 'DashboardPage')
+const ClientesPage = tela(() => import('@/pages/cadastros/ClientesPage'), 'ClientesPage')
+const UsuariosPage = tela(() => import('@/pages/cadastros/UsuariosPage'), 'UsuariosPage')
+const CarrinhosPage = tela(() => import('@/pages/cadastros/CarrinhosPage'), 'CarrinhosPage')
+const TiposCarrinhoPage = tela(() => import('@/pages/cadastros/TiposCarrinhoPage'), 'TiposCarrinhoPage')
+const EmpresaPage = tela(() => import('@/pages/EmpresaPage'), 'EmpresaPage')
+const EntregaPage = tela(() => import('@/pages/locacao/EntregaPage'), 'EntregaPage')
+const LocacoesPage = tela(() => import('@/pages/locacao/LocacoesPage'), 'LocacoesPage')
+const AberturaCaixaPage = tela(() => import('@/pages/caixa/AberturaCaixaPage'), 'AberturaCaixaPage')
+const FechamentoCaixaPage = tela(() => import('@/pages/caixa/FechamentoCaixaPage'), 'FechamentoCaixaPage')
+const SuprimentoSangriaPage = tela(() => import('@/pages/caixa/SuprimentoSangriaPage'), 'SuprimentoSangriaPage')
+const FluxoCaixaPage = tela(() => import('@/pages/caixa/FluxoCaixaPage'), 'FluxoCaixaPage')
+const EtiquetasPage = tela(() => import('@/pages/EtiquetasPage'), 'EtiquetasPage')
+const RelatorioClientesPage = tela(() => import('@/pages/relatorios/RelatorioClientesPage'), 'RelatorioClientesPage')
+const HistoricoLocacoesPage = tela(() => import('@/pages/relatorios/HistoricoLocacoesPage'), 'HistoricoLocacoesPage')
+const BiPage = tela(() => import('@/pages/bi/BiPage'), 'BiPage')
 
 function App() {
   return (
@@ -53,11 +65,12 @@ function App() {
           <Route path="/caixa/suprimento-sangria" element={<SuprimentoSangriaPage />} />
           <Route path="/caixa/fluxo" element={<FluxoCaixaPage />} />
 
-          {/* Igual ao legado: Administrador e Gerente imprimem etiquetas e veem os relatórios. */}
+          {/* Igual ao legado: Administrador e Gerente imprimem etiquetas e veem os relatórios (e o BI). */}
           <Route element={<RotaComPerfil perfis={PERFIS_SUPERVISAO} />}>
             <Route path="/etiquetas" element={<EtiquetasPage />} />
             <Route path="/relatorios/clientes" element={<RelatorioClientesPage />} />
             <Route path="/relatorios/historico" element={<HistoricoLocacoesPage />} />
+            <Route path="/bi" element={<BiPage />} />
           </Route>
         </Route>
       </Route>

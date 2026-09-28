@@ -17,8 +17,9 @@ public class DashboardController : ControllerBase
         _service = service;
     }
 
-    /// <summary>KPIs exibidos na home (dashboard BI) do novo sistema.</summary>
+    /// <summary>KPIs da home para o período (datas inclusivas; sem datas, o dia de hoje).</summary>
     [HttpGet("resumo")]
-    public async Task<ActionResult<DashboardResumoDto>> Resumo(CancellationToken ct)
-        => Ok(await _service.ObterResumoAsync(ct));
+    public async Task<ActionResult<DashboardResumoDto>> Resumo(
+        [FromQuery] DateTime? dataInicio, [FromQuery] DateTime? dataFim, CancellationToken ct)
+        => Ok(await _service.ObterResumoAsync(dataInicio, dataFim, ct));
 }

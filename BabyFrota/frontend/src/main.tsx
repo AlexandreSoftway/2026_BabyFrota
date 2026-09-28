@@ -10,6 +10,9 @@ const queryClient = new QueryClient({
     queries: {
       retry: 1,
       staleTime: 30_000,
+      // Não reconsulta tudo a cada volta para a aba do navegador (no balcão isso acontece o tempo todo). O que
+      // precisa estar sempre atual tem atualização própria (Dashboard e locações em andamento).
+      refetchOnWindowFocus: false,
     },
   },
 })

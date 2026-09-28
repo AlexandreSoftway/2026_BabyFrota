@@ -18,6 +18,7 @@ import {
   Coins,
   ChartColumn,
   ChartNoAxesCombined,
+  ChartSpline,
   type LucideIcon,
 } from 'lucide-react'
 import { PERFIL_ADMINISTRADOR, PERFIS_SUPERVISAO } from '@/lib/perfis'
@@ -84,6 +85,7 @@ export const navGroups: NavGroup[] = [
       { label: 'Etiquetas', to: '/etiquetas', icon: Printer, perfis: PERFIS_SUPERVISAO },
       { label: 'Relatório de Clientes', to: '/relatorios/clientes', icon: FileBarChart, perfis: PERFIS_SUPERVISAO },
       { label: 'Histórico de Locações', to: '/relatorios/historico', icon: History, perfis: PERFIS_SUPERVISAO },
+      { label: 'BI', to: '/bi', icon: ChartSpline, perfis: PERFIS_SUPERVISAO },
     ],
   },
 ]

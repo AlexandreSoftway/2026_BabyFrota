@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text;
 using BabyFrota.Api.Middleware;
 using BabyFrota.Api.OpenApi;
@@ -19,6 +20,20 @@ builder.Services.AddApplicationServices(builder.Configuration);
 
 // ---------- MVC / Controllers ----------
 builder.Services.AddControllers();
+
+// ---------- Compressão das respostas ----------
+// O JSON das listas e relatórios encolhe de 7 a 14 vezes. Brotli em "Optimal" (no .NET é o nível 4, ainda rápido: no
+// "Fastest" ele comprimia menos que o gzip) e gzip em "Fastest", para quem não aceita brotli. Vale também em HTTPS: o
+// ataque BREACH depende de o navegador mandar a credencial sozinho (cookie) em pedidos forjados por outro site, e aqui o
+// token vai no cabeçalho Authorization, posto pelo próprio front.
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProvider>();
+    options.Providers.Add<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProvider>();
+});
+builder.Services.Configure<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProviderOptions>(o => o.Level = CompressionLevel.Optimal);
+builder.Services.Configure<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
 
 // ---------- OpenAPI (nativo .NET) + Bearer ----------
 builder.Services.AddOpenApi(options =>
@@ -76,6 +91,7 @@ builder.Services.AddProblemDetails();
 
 var app = builder.Build();
 
+app.UseResponseCompression();
 app.UseExceptionHandler();
 
 if (app.Environment.IsDevelopment())

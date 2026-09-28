@@ -1,16 +1,14 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import type { DashboardResumo } from './types'
+import type { DashboardPeriodo, DashboardResumo } from './types'
 
-async function fetchResumo(): Promise<DashboardResumo> {
-  const { data } = await api.get<DashboardResumo>('/dashboard/resumo')
-  return data
-}
-
-export function useDashboardResumo() {
+/** Com `habilitado` falso (período inválido), não consulta e a tela continua mostrando o último período válido. */
+export function useDashboardResumo(periodo: DashboardPeriodo, habilitado = true) {
   return useQuery({
-    queryKey: ['dashboard', 'resumo'],
-    queryFn: fetchResumo,
+    queryKey: ['dashboard', 'resumo', periodo],
+    queryFn: async () => (await api.get<DashboardResumo>('/dashboard/resumo', { params: periodo })).data,
+    enabled: habilitado,
+    placeholderData: keepPreviousData,
     refetchInterval: 60_000,
   })
 }
