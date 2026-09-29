@@ -77,4 +77,21 @@ public class CarrinhoController : ControllerBase
     [Authorize(Policy = "Supervisor")]
     public Task<IActionResult> RemoverFoto(int id, CancellationToken ct)
         => MidiaHttp.RemoverAsync(this, _midias, TipoMidia.FotoCarrinho, id, ct);
+
+    // ---------- Documento de compra (nota fiscal, recibo): mesmas regras da foto ----------
+
+    [HttpGet("{id:int}/documento")]
+    public Task<IActionResult> ObterDocumento(int id, CancellationToken ct)
+        => MidiaHttp.ObterAsync(this, _midias, TipoMidia.DocumentoCarrinho, id, ct);
+
+    [HttpPut("{id:int}/documento")]
+    [Authorize(Policy = "Supervisor")]
+    [RequestSizeLimit(MidiaHttp.LimiteRequisicao)]
+    public Task<IActionResult> SalvarDocumento(int id, IFormFile? arquivo, CancellationToken ct)
+        => MidiaHttp.SalvarAsync(this, _midias, TipoMidia.DocumentoCarrinho, id, arquivo, ct);
+
+    [HttpDelete("{id:int}/documento")]
+    [Authorize(Policy = "Supervisor")]
+    public Task<IActionResult> RemoverDocumento(int id, CancellationToken ct)
+        => MidiaHttp.RemoverAsync(this, _midias, TipoMidia.DocumentoCarrinho, id, ct);
 }

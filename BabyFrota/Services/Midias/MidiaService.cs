@@ -5,8 +5,8 @@ using Microsoft.EntityFrameworkCore;
 namespace BabyFrota.Services.Midias;
 
 /// <summary>
-/// Foto e documento do cliente e foto do carrinho, nas mesmas colunas que o legado usa (Foto/MimeFoto, Documento/MimeDocumento),
-/// então o que um sistema grava o outro mostra. A tela reduz a imagem antes de enviar (a foto para 400 px, como o legado
+/// Foto e documento do cliente e foto e documento de compra do carrinho, nas mesmas colunas que o legado usa (Foto/MimeFoto,
+/// Documento/MimeDocumento, DocumentoCompra/MimeDocumentoCompra), então o que um sistema grava o outro mostra. A tela reduz a imagem antes de enviar (a foto para 400 px, como o legado
 /// reduzia para 250 px), e o servidor confere pelo conteúdo que é mesmo uma imagem e grava a extensão de 3 letras que o legado
 /// usa para montar o "image/..." (jpg, png, gif, bmp).
 /// </summary>
@@ -32,6 +32,8 @@ public class MidiaService : IMidiaService
                 .Select(c => new ConteudoLido(c.Documento, c.MimeDocumento)).FirstOrDefaultAsync(ct),
             TipoMidia.FotoCarrinho => await _db.Carrinhos.Where(c => c.Cdcarrinho == id)
                 .Select(c => new ConteudoLido(c.Foto, c.MimeFoto)).FirstOrDefaultAsync(ct),
+            TipoMidia.DocumentoCarrinho => await _db.Carrinhos.Where(c => c.Cdcarrinho == id)
+                .Select(c => new ConteudoLido(c.DocumentoCompra, c.MimeDocumentoCompra)).FirstOrDefaultAsync(ct),
             TipoMidia.FotoUsuario => await _db.Usuarios.Where(u => u.Cdusuario == id)
                 .Select(u => new ConteudoLido(u.Foto, u.MimeFoto)).FirstOrDefaultAsync(ct),
             _ => throw new ArgumentOutOfRangeException(nameof(tipo)),
@@ -40,7 +42,7 @@ public class MidiaService : IMidiaService
         if (linha is null)
             throw new KeyNotFoundException(tipo switch
             {
-                TipoMidia.FotoCarrinho => $"Carrinho {id} não encontrado.",
+                TipoMidia.FotoCarrinho or TipoMidia.DocumentoCarrinho => $"Carrinho {id} não encontrado.",
                 TipoMidia.FotoUsuario => $"Usuário {id} não encontrado.",
                 _ => $"Cliente {id} não encontrado.",
             });
@@ -88,10 +90,15 @@ public class MidiaService : IMidiaService
                 break;
 
             case TipoMidia.FotoCarrinho:
-                var carrinho = await _db.Carrinhos.FirstOrDefaultAsync(c => c.Cdcarrinho == id, ct)
-                    ?? throw new KeyNotFoundException($"Carrinho {id} não encontrado.");
-                carrinho.Foto = conteudo;
-                carrinho.MimeFoto = mime;
+                var carrinhoFoto = await CarrinhoAsync(id, ct);
+                carrinhoFoto.Foto = conteudo;
+                carrinhoFoto.MimeFoto = mime;
+                break;
+
+            case TipoMidia.DocumentoCarrinho:
+                var carrinhoDocumento = await CarrinhoAsync(id, ct);
+                carrinhoDocumento.DocumentoCompra = conteudo;
+                carrinhoDocumento.MimeDocumentoCompra = mime;
                 break;
 
             default:
@@ -105,6 +112,10 @@ public class MidiaService : IMidiaService
     private async Task<Cliente> ClienteAsync(int id, CancellationToken ct)
         => await _db.Clientes.FirstOrDefaultAsync(c => c.Cdcliente == id, ct)
             ?? throw new KeyNotFoundException($"Cliente {id} não encontrado.");
+
+    private async Task<Carrinho> CarrinhoAsync(int id, CancellationToken ct)
+        => await _db.Carrinhos.FirstOrDefaultAsync(c => c.Cdcarrinho == id, ct)
+            ?? throw new KeyNotFoundException($"Carrinho {id} não encontrado.");
 
     /// <summary>Formato da imagem pelos primeiros bytes; nulo se não for JPG, PNG, GIF ou BMP.</summary>
     private static (string Mime, string ContentType)? Formato(ReadOnlySpan<byte> bytes)

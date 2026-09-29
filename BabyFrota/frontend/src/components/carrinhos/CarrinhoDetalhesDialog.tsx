@@ -23,7 +23,7 @@ const STATUS_VARIANTE: Record<number, 'success' | 'warning' | 'info' | 'default'
   4: 'default',
 }
 
-/** O cadastro do carrinho, só para ver, com a foto. Os dados vêm da própria listagem (ela já traz tudo). */
+/** O cadastro do carrinho, só para ver, com a foto e o documento de compra. Os dados vêm da própria listagem (ela já traz tudo). */
 export function CarrinhoDetalhesDialog({
   carrinho,
   onClose,
@@ -49,9 +49,19 @@ export function CarrinhoDetalhesDialog({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="flex flex-col gap-4 sm:flex-row">
-              <CampoImagem titulo="Foto" genero="a" url={`/carrinho/${carrinho.id}/foto`} ladoMaximo={400} somenteLeitura />
-              <SecaoDetalhe titulo="Dados do carrinho" icone={Baby} className="flex-1">
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-6">
+                <CampoImagem titulo="Foto" genero="a" url={`/carrinho/${carrinho.id}/foto`} ladoMaximo={400} somenteLeitura />
+                <CampoImagem
+                  titulo="Documento de compra"
+                  genero="o"
+                  url={`/carrinho/${carrinho.id}/documento`}
+                  ladoMaximo={1600}
+                  formato="documento"
+                  somenteLeitura
+                />
+              </div>
+              <SecaoDetalhe titulo="Dados do carrinho" icone={Baby}>
                 <ItemDetalhe rotulo="Tipo" valor={carrinho.tipoCarrinhoDescricao} />
                 <ItemDetalhe rotulo="Situação" valor={carrinho.statusNome} />
                 <ItemDetalhe rotulo="Aquisição" valor={formatarDataCurta(carrinho.dataAquisicao)} />

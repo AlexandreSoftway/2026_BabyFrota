@@ -7,6 +7,9 @@ public enum TipoMidia
     DocumentoCliente,
     FotoCarrinho,
 
+    /// <summary>Documento de compra do carrinho (nota fiscal, recibo): colunas DocumentoCompra/MimeDocumentoCompra.</summary>
+    DocumentoCarrinho,
+
     /// <summary>Só leitura: o sistema novo mostra a foto que o legado gravou no usuário, mas não troca.</summary>
     FotoUsuario,
 }

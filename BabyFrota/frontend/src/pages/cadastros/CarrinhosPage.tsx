@@ -302,13 +302,23 @@ export function CarrinhosPage() {
               <Input id="observacao" {...register('observacao')} />
             </div>
 
-            {/* Como no legado, a foto entra depois que o carrinho existe, e salva na hora. */}
+            {/* Como no legado, foto e documento de compra entram depois que o carrinho existe, e cada um salva na hora. */}
             <div className="col-span-2">
               {editando ? (
-                <CampoImagem titulo="Foto" genero="a" url={`/carrinho/${editando.id}/foto`} ladoMaximo={400} />
+                <div className="flex flex-wrap gap-6">
+                  <CampoImagem titulo="Foto" genero="a" url={`/carrinho/${editando.id}/foto`} ladoMaximo={400} />
+                  <CampoImagem
+                    titulo="Documento de compra"
+                    genero="o"
+                    url={`/carrinho/${editando.id}/documento`}
+                    ladoMaximo={1600}
+                    formato="documento"
+                  />
+                </div>
               ) : (
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Camera className="size-4" /> A foto pode ser incluída depois de salvar, ao abrir o carrinho.
+                  <Camera className="size-4" /> Foto e documento de compra podem ser incluídos depois de salvar, ao abrir o
+                  carrinho.
                 </p>
               )}
             </div>
