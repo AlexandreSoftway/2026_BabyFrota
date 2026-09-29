@@ -6,7 +6,10 @@ public class UsuarioDto
     public string Nome { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string? Cpf { get; set; }
+    public string? Rg { get; set; }
+    public string? Ddd { get; set; }
     public string? Telefone { get; set; }
+    public string? DddCelular { get; set; }
     public string? Celular { get; set; }
     public int PerfilId { get; set; }
     public string PerfilNome { get; set; } = string.Empty;

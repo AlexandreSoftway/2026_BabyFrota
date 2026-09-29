@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using BabyFrota.Data.Auditoria;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -16,8 +17,13 @@ public static class DependencyInjection
         var connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection não configurada.");
 
-        services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(connectionString, sql =>
+        // Log de auditoria (TBLog) em toda gravação, como o legado. Quem está gravando vem de IAuditoriaContexto, que a
+        // Api registra; sem ele (ex.: um teste), nada é auditado.
+        services.AddSingleton<AuditoriaInterceptor>();
+
+        services.AddDbContext<AppDbContext>((provider, options) =>
+            options.AddInterceptors(provider.GetRequiredService<AuditoriaInterceptor>())
+            .UseSqlServer(connectionString, sql =>
             {
                 // maxRetryCount alto + CommandTimeout alto é uma combinação perigosa: uma única
                 // query lenta/travada (ex.: table scan em tabela grande sem índice) é reexecutada

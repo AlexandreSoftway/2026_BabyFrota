@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Pencil, Plus, UserX } from 'lucide-react'
+import { Eye, Pencil, Plus, UserX } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { UsuarioDetalhesDialog } from '@/components/usuarios/UsuarioDetalhesDialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -61,6 +62,7 @@ export function UsuariosPage() {
 
   const [modalAberto, setModalAberto] = useState(false)
   const [editando, setEditando] = useState<Usuario | null>(null)
+  const [detalhe, setDetalhe] = useState<Usuario | null>(null)
 
   const schema = useMemo(() => buildSchema(editando === null), [editando])
   const {
@@ -142,9 +144,12 @@ export function UsuariosPage() {
     },
     {
       header: 'Ações',
-      className: 'w-32 text-right',
+      className: 'w-40 text-right',
       cell: (u) => (
-        <div className="text-right">
+        <div className="flex justify-end whitespace-nowrap">
+          <Button variant="ghost" size="icon" onClick={() => setDetalhe(u)} title="Ver detalhes">
+            <Eye className="size-4" />
+          </Button>
           <Button variant="ghost" size="icon" onClick={() => abrirEdicao(u)} title="Editar">
             <Pencil className="size-4" />
           </Button>
@@ -253,6 +258,15 @@ export function UsuariosPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <UsuarioDetalhesDialog
+        usuario={detalhe}
+        onClose={() => setDetalhe(null)}
+        onEditar={(usuario) => {
+          setDetalhe(null)
+          abrirEdicao(usuario)
+        }}
+      />
     </>
   )
 }

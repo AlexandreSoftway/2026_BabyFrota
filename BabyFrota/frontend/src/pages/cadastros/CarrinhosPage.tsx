@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { Camera, Eye, Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { CarrinhoDetalhesDialog } from '@/components/carrinhos/CarrinhoDetalhesDialog'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { CampoImagem } from '@/components/midia/CampoImagem'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -80,6 +82,7 @@ export function CarrinhosPage() {
 
   const [modalAberto, setModalAberto] = useState(false)
   const [editando, setEditando] = useState<Carrinho | null>(null)
+  const [detalhe, setDetalhe] = useState<Carrinho | null>(null)
 
   const {
     register,
@@ -213,6 +216,9 @@ export function CarrinhosPage() {
                 Valor: <span className="text-foreground">{formatarMoeda(carrinho.valorAquisicao)}</span>
               </p>
               <div className="flex justify-end gap-1 pt-2">
+                <Button variant="ghost" size="icon" onClick={() => setDetalhe(carrinho)} title="Ver detalhes">
+                  <Eye className="size-4" />
+                </Button>
                 <Button variant="ghost" size="icon" onClick={() => abrirEdicao(carrinho)} title="Editar">
                   <Pencil className="size-4" />
                 </Button>
@@ -296,6 +302,17 @@ export function CarrinhosPage() {
               <Input id="observacao" {...register('observacao')} />
             </div>
 
+            {/* Como no legado, a foto entra depois que o carrinho existe, e salva na hora. */}
+            <div className="col-span-2">
+              {editando ? (
+                <CampoImagem titulo="Foto" genero="a" url={`/carrinho/${editando.id}/foto`} ladoMaximo={400} />
+              ) : (
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Camera className="size-4" /> A foto pode ser incluída depois de salvar, ao abrir o carrinho.
+                </p>
+              )}
+            </div>
+
             <DialogFooter className="col-span-2">
               <Button type="button" variant="outline" onClick={() => setModalAberto(false)}>
                 Cancelar
@@ -307,6 +324,15 @@ export function CarrinhosPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <CarrinhoDetalhesDialog
+        carrinho={detalhe}
+        onClose={() => setDetalhe(null)}
+        onEditar={(carrinho) => {
+          setDetalhe(null)
+          abrirEdicao(carrinho)
+        }}
+      />
     </>
   )
 }

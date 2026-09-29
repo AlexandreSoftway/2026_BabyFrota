@@ -2,9 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type {
   ClienteRelatorio,
+  LogDetalhe,
   ModeloHistorico,
   RelatorioClientesFiltro,
   RelatorioHistoricoFiltro,
+  RelatorioLogFiltro,
+  RelatorioLogResultado,
   UsuarioFiltro,
 } from './types'
 
@@ -61,5 +64,40 @@ export function useUsuariosRelatorio() {
     queryKey: ['relatorios', 'usuarios'],
     queryFn: async () => (await api.get<UsuarioFiltro[]>('/relatorio/usuarios')).data,
     staleTime: 5 * 60_000,
+  })
+}
+
+// ---------- Relatório de Log ----------
+
+export function useRelatorioLog(pedido: PedidoRelatorio<RelatorioLogFiltro> | null) {
+  return useQuery({
+    queryKey: ['relatorios', 'log', pedido],
+    queryFn: async () =>
+      (
+        await api.get<RelatorioLogResultado>('/relatorio/log', {
+          params: pedido?.filtro,
+          timeout: TEMPO_LIMITE_RELATORIO_MS,
+        })
+      ).data,
+    enabled: pedido !== null,
+    ...opcoesDeRelatorio,
+  })
+}
+
+/** O antes e depois de uma linha do log, pedido só quando a linha é aberta. */
+export function useLogDetalhe(id: number) {
+  return useQuery({
+    queryKey: ['relatorios', 'log', 'detalhe', id],
+    queryFn: async () => (await api.get<LogDetalhe>(`/relatorio/log/${id}`)).data,
+    staleTime: Infinity,
+    retry: false,
+  })
+}
+
+export function useTabelasLog() {
+  return useQuery({
+    queryKey: ['relatorios', 'log', 'tabelas'],
+    queryFn: async () => (await api.get<string[]>('/relatorio/log/tabelas')).data,
+    staleTime: Infinity,
   })
 }

@@ -31,6 +31,7 @@ const EtiquetasPage = tela(() => import('@/pages/EtiquetasPage'), 'EtiquetasPage
 const RelatorioClientesPage = tela(() => import('@/pages/relatorios/RelatorioClientesPage'), 'RelatorioClientesPage')
 const HistoricoLocacoesPage = tela(() => import('@/pages/relatorios/HistoricoLocacoesPage'), 'HistoricoLocacoesPage')
 const BiPage = tela(() => import('@/pages/bi/BiPage'), 'BiPage')
+const RelatorioLogPage = tela(() => import('@/pages/relatorios/RelatorioLogPage'), 'RelatorioLogPage')
 
 function App() {
   return (
@@ -43,10 +44,11 @@ function App() {
 
           <Route path="/clientes" element={<ClientesPage />} />
 
-          {/* Igual ao legado: só Administrador gerencia usuários e os dados da empresa. */}
+          {/* Igual ao legado: só Administrador gerencia usuários e os dados da empresa, e vê o log. */}
           <Route element={<RotaComPerfil perfis={[PERFIL_ADMINISTRADOR]} />}>
             <Route path="/usuarios" element={<UsuariosPage />} />
             <Route path="/empresa" element={<EmpresaPage />} />
+            <Route path="/relatorios/log" element={<RelatorioLogPage />} />
           </Route>
 
           {/* Igual ao legado: Administrador e Gerente cadastram carrinho e tipo de carrinho. */}

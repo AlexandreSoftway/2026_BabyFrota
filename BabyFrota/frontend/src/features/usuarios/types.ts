@@ -3,7 +3,10 @@ export interface Usuario {
   nome: string
   email: string
   cpf: string | null
+  rg: string | null
+  ddd: string | null
   telefone: string | null
+  dddCelular: string | null
   celular: string | null
   perfilId: number
   perfilNome: string

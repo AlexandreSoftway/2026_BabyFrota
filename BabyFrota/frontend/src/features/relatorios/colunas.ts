@@ -4,6 +4,7 @@ import type {
   HistoricoLocacaoDetalhado,
   HistoricoLocacaoSimplificado,
   HistoricoOcupacao,
+  LogRelatorio,
 } from './types'
 
 /**
@@ -225,4 +226,17 @@ export const colunasOcupacao: ColunaRelatorio<HistoricoOcupacao>[] = [
   { cabecalho: 'Manhã', valor: (o) => o.totalManha },
   { cabecalho: 'Tarde', valor: (o) => o.totalTarde },
   { cabecalho: 'Noite', valor: (o) => o.totalNoite },
+]
+
+// ---------- Relatório de Log (RelatorioLog.rdlc) ----------
+
+/** Colunas do RelatorioLog.rdlc: Ação, Data (formato "g"), Tabela, Usuário, IP e Colunas (as colunas modificadas). */
+export const colunasLog: ColunaRelatorio<LogRelatorio>[] = [
+  { cabecalho: 'Ação', valor: (l) => l.acao },
+  { cabecalho: 'Data', valor: (l) => dataHoraCurta(l.data) },
+  { cabecalho: 'Tabela', valor: (l) => l.tabela },
+  { cabecalho: 'Usuário', valor: (l) => l.usuario },
+  { cabecalho: 'IP', valor: (l) => l.ip },
+  // O log junta os nomes com ";"; o espaço depois deixa a coluna quebrar linha na tela.
+  { cabecalho: 'Colunas', valor: (l) => l.colunas?.split(';').join('; ') ?? null },
 ]

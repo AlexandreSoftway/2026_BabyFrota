@@ -13,10 +13,12 @@ namespace BabyFrota.Api.Controllers;
 public class RelatorioController : ControllerBase
 {
     private readonly IRelatorioService _service;
+    private readonly IRelatorioLogService _log;
 
-    public RelatorioController(IRelatorioService service)
+    public RelatorioController(IRelatorioService service, IRelatorioLogService log)
     {
         _service = service;
+        _log = log;
     }
 
     [HttpGet("clientes")]
@@ -38,4 +40,22 @@ public class RelatorioController : ControllerBase
     [HttpGet("usuarios")]
     public async Task<ActionResult<List<UsuarioFiltroDto>>> ListarUsuarios(CancellationToken ct)
         => Ok(await _service.ListarUsuariosAsync(ct));
+
+    // Relatório de Log: igual ao menu do legado (Default.aspx mostra "Log" só ao Administrador).
+    [HttpGet("log")]
+    [Authorize(Policy = "Administrador")]
+    public async Task<ActionResult<RelatorioLogResultado>> ListarLog([FromQuery] RelatorioLogFiltro filtro, CancellationToken ct)
+        => Ok(await _log.ListarAsync(filtro, ct));
+
+    [HttpGet("log/{id:int}")]
+    [Authorize(Policy = "Administrador")]
+    public async Task<ActionResult<LogDetalheDto>> ObterLog(int id, CancellationToken ct)
+    {
+        var detalhe = await _log.ObterAsync(id, ct);
+        return detalhe is null ? NotFound() : Ok(detalhe);
+    }
+
+    [HttpGet("log/tabelas")]
+    [Authorize(Policy = "Administrador")]
+    public ActionResult<List<string>> ListarTabelasDoLog() => Ok(_log.ListarTabelas());
 }

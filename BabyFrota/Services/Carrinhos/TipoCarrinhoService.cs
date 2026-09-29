@@ -27,6 +27,7 @@ public class TipoCarrinhoService : ITipoCarrinhoService
                 Id = t.CdtipoCarrinho,
                 Descricao = t.Descricao,
                 QuantidadeCarrinhos = t.Carrinhos.Count,
+                QuantidadeFaixas = t.PrecoLocacoes.Count,
             })
             .ToListAsync(ct);
     }
@@ -40,6 +41,7 @@ public class TipoCarrinhoService : ITipoCarrinhoService
                 Id = t.CdtipoCarrinho,
                 Descricao = t.Descricao,
                 QuantidadeCarrinhos = t.Carrinhos.Count,
+                QuantidadeFaixas = t.PrecoLocacoes.Count,
             })
             .FirstOrDefaultAsync(ct);
     }
@@ -50,7 +52,7 @@ public class TipoCarrinhoService : ITipoCarrinhoService
         _db.TipoCarrinhos.Add(entidade);
         await _db.SaveChangesAsync(ct);
 
-        return new TipoCarrinhoDto { Id = entidade.CdtipoCarrinho, Descricao = entidade.Descricao, QuantidadeCarrinhos = 0 };
+        return new TipoCarrinhoDto { Id = entidade.CdtipoCarrinho, Descricao = entidade.Descricao, QuantidadeCarrinhos = 0, QuantidadeFaixas = 0 };
     }
 
     public async Task<TipoCarrinhoDto> AtualizarAsync(int id, TipoCarrinhoUpsertRequest request, CancellationToken ct = default)
@@ -66,6 +68,7 @@ public class TipoCarrinhoService : ITipoCarrinhoService
             Id = entidade.CdtipoCarrinho,
             Descricao = entidade.Descricao,
             QuantidadeCarrinhos = await _db.Carrinhos.CountAsync(c => c.CdtipoCarrinho == id, ct),
+            QuantidadeFaixas = await _db.PrecoLocacoes.CountAsync(p => p.CdtipoCarrinho == id, ct),
         };
     }
 
@@ -78,6 +81,10 @@ public class TipoCarrinhoService : ITipoCarrinhoService
         if (emUso)
             throw new InvalidOperationException("Não é possível excluir um tipo de carrinho em uso.");
 
+        // Como o legado (NTipoCarrinho.Excluir): as faixas de preço do tipo saem junto. Sem isso a chave estrangeira de
+        // PrecoLocacao impedia a exclusão de qualquer tipo com preço cadastrado.
+        var faixas = await _db.PrecoLocacoes.Where(p => p.CdtipoCarrinho == id).ToListAsync(ct);
+        _db.PrecoLocacoes.RemoveRange(faixas);
         _db.TipoCarrinhos.Remove(entidade);
         await _db.SaveChangesAsync(ct);
     }

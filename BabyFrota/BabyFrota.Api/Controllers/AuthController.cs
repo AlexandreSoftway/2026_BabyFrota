@@ -1,4 +1,5 @@
-﻿using BabyFrota.DTOs.Auth;
+﻿using BabyFrota.Api.Security;
+using BabyFrota.DTOs.Auth;
 using BabyFrota.Services.Auth;
 using Microsoft.AspNetCore.Mvc;
 
@@ -19,8 +20,7 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<ActionResult<LoginResponse>> Login([FromBody] LoginRequest request, CancellationToken ct)
     {
-        var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "desconhecido";
-        var resultado = await _authService.LoginAsync(request, ip, ct);
+        var resultado = await _authService.LoginAsync(request, EnderecoIp.Obter(HttpContext), ct);
         return Ok(resultado);
     }
 }

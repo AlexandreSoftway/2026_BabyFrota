@@ -172,3 +172,55 @@ export interface UsuarioFiltro {
   id: number
   nome: string
 }
+
+// ---------- Relatório de Log (RelatorioLog.rdlc), sobre a tabela de auditoria TBLog ----------
+
+/** As ações gravadas no log (a lista do legado dizia "Alteração", mas o log grava "Atualização"). */
+export const ACOES_LOG = ['Inserção', 'Atualização', 'Exclusão', 'Login'] as const
+
+/** Filtros do legado: usuário, tabela, ação e período (aqui as duas datas são obrigatórias). */
+export interface RelatorioLogFiltro {
+  dataInicio: string
+  dataFinal: string
+  usuarioId?: number
+  tabela?: string
+  acao?: string
+}
+
+export interface LogRelatorio {
+  id: number
+  acao: string
+  data: string
+  tabela: string
+  usuario: string | null
+  ip: string
+  colunas: string | null
+}
+
+export interface RelatorioLogResultado {
+  itens: LogRelatorio[]
+  /** O período passou do limite de linhas; vieram só as primeiras. */
+  truncado: boolean
+  limite: number
+}
+
+export interface LogCampo {
+  coluna: string
+  antes: string | null
+  depois: string | null
+  alterado: boolean
+}
+
+/** O registro antes e depois da gravação, coluna a coluna. */
+export interface LogDetalhe {
+  id: number
+  acao: string
+  data: string
+  tabela: string
+  usuario: string | null
+  ip: string
+  campos: LogCampo[]
+  /** Só quando o valor gravado não é XML: o texto como está no banco. */
+  textoAntigo: string | null
+  textoNovo: string | null
+}

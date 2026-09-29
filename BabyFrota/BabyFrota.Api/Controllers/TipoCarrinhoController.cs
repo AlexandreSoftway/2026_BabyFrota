@@ -15,10 +15,12 @@ namespace BabyFrota.Api.Controllers;
 public class TipoCarrinhoController : ControllerBase
 {
     private readonly ITipoCarrinhoService _service;
+    private readonly IPrecoLocacaoService _precos;
 
-    public TipoCarrinhoController(ITipoCarrinhoService service)
+    public TipoCarrinhoController(ITipoCarrinhoService service, IPrecoLocacaoService precos)
     {
         _service = service;
+        _precos = precos;
     }
 
     [HttpGet]
@@ -52,6 +54,31 @@ public class TipoCarrinhoController : ControllerBase
     public async Task<IActionResult> Excluir(int id, CancellationToken ct)
     {
         await _service.ExcluirAsync(id, ct);
+        return NoContent();
+    }
+
+    // ---------- Faixas de preço (PrecoLocacao): no legado ficavam na própria tela Tipo de Carrinho ----------
+
+    [HttpGet("{tipoCarrinhoId:int}/precos")]
+    public async Task<ActionResult<List<PrecoLocacaoDto>>> ListarPrecos(int tipoCarrinhoId, CancellationToken ct)
+        => Ok(await _precos.ListarAsync(tipoCarrinhoId, ct));
+
+    [HttpPost("{tipoCarrinhoId:int}/precos")]
+    [Authorize(Policy = "Supervisor")]
+    public async Task<ActionResult<PrecoLocacaoDto>> CriarPreco(
+        int tipoCarrinhoId, [FromBody] PrecoLocacaoUpsertRequest request, CancellationToken ct)
+        => Ok(await _precos.CriarAsync(tipoCarrinhoId, request, ct));
+
+    [HttpPut("precos/{id:int}")]
+    [Authorize(Policy = "Supervisor")]
+    public async Task<ActionResult<PrecoLocacaoDto>> AtualizarPreco(int id, [FromBody] PrecoLocacaoUpsertRequest request, CancellationToken ct)
+        => Ok(await _precos.AtualizarAsync(id, request, ct));
+
+    [HttpDelete("precos/{id:int}")]
+    [Authorize(Policy = "Supervisor")]
+    public async Task<IActionResult> ExcluirPreco(int id, CancellationToken ct)
+    {
+        await _precos.ExcluirAsync(id, ct);
         return NoContent();
     }
 }

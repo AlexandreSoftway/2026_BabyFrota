@@ -1,5 +1,6 @@
 ﻿using BabyFrota.DTOs.Common;
 using BabyFrota.DTOs.Usuarios;
+using BabyFrota.Services.Midias;
 using BabyFrota.Services.Usuarios;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -13,10 +14,12 @@ namespace BabyFrota.Api.Controllers;
 public class UsuarioController : ControllerBase
 {
     private readonly IUsuarioService _service;
+    private readonly IMidiaService _midias;
 
-    public UsuarioController(IUsuarioService service)
+    public UsuarioController(IUsuarioService service, IMidiaService midias)
     {
         _service = service;
+        _midias = midias;
     }
 
     [HttpGet]
@@ -31,6 +34,11 @@ public class UsuarioController : ControllerBase
         var usuario = await _service.ObterPorIdAsync(id, ct);
         return usuario is null ? NotFound() : Ok(usuario);
     }
+
+    /// <summary>A foto que o legado gravou no usuário (só leitura; 204 se não houver).</summary>
+    [HttpGet("{id:int}/foto")]
+    public Task<IActionResult> ObterFoto(int id, CancellationToken ct)
+        => MidiaHttp.ObterAsync(this, _midias, TipoMidia.FotoUsuario, id, ct);
 
     [HttpGet("perfis")]
     public async Task<ActionResult<List<PerfilDto>>> ListarPerfis(CancellationToken ct)

@@ -7,6 +7,7 @@ using BabyFrota.Services.Clientes;
 using BabyFrota.Services.Dashboard;
 using BabyFrota.Services.Empresas;
 using BabyFrota.Services.Locacoes;
+using BabyFrota.Services.Midias;
 using BabyFrota.Services.Relatorios;
 using BabyFrota.Services.Seed;
 using BabyFrota.Services.Usuarios;
@@ -28,15 +29,18 @@ public static class DependencyInjection
 
         services.AddScoped<ITipoCarrinhoService, TipoCarrinhoService>();
         services.AddScoped<ICarrinhoService, CarrinhoService>();
+        services.AddScoped<IPrecoLocacaoService, PrecoLocacaoService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IUsuarioService, UsuarioService>();
         services.AddScoped<IClienteService, ClienteService>();
+        services.AddScoped<IMidiaService, MidiaService>();
         services.AddScoped<IEmpresaService, EmpresaService>();
         services.AddScoped<ICaixaService, CaixaService>();
         services.AddScoped<IFluxoCaixaService, FluxoCaixaService>();
         services.AddScoped<ILocacaoService, LocacaoService>();
         services.AddScoped<ILocacaoConsultaService, LocacaoConsultaService>();
         services.AddScoped<IRelatorioService, RelatorioService>();
+        services.AddScoped<IRelatorioLogService, RelatorioLogService>();
         services.AddScoped<IBiService, BiService>();
 
         services.AddHttpClient("ViaCep", client =>

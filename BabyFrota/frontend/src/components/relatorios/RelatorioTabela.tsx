@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { DataTable, type DataTableColumn, type DataTableExportColumn } from '@/components/ui/data-table'
 import type { ColunaRelatorio } from '@/features/relatorios/colunas'
 import { textoDoValor, type GrupoCabecalho } from '@/lib/export'
@@ -15,6 +15,10 @@ interface RelatorioTabelaProps<T> {
   /** Filtros aplicados, impressos no Excel e no PDF. */
   subtitulo?: string
   colunaFixaPdf?: number
+  /** Linha expansível: o que mostrar abaixo da linha aberta (ex.: o antes e depois do log). */
+  renderDetail?: (linha: T) => ReactNode
+  /** Células pequenas e sem quebra de linha (padrão). Desligue quando uma coluna tem texto longo. */
+  compacta?: boolean
 }
 
 /**
@@ -29,6 +33,8 @@ export function RelatorioTabela<T extends object>({
   nomeArquivo,
   subtitulo,
   colunaFixaPdf,
+  renderDetail,
+  compacta = true,
 }: RelatorioTabelaProps<T>) {
   const [pagina, setPagina] = useState(1)
   const [tamanhoPagina, setTamanhoPagina] = useState(TAMANHO_PAGINA_PADRAO)
@@ -68,7 +74,8 @@ export function RelatorioTabela<T extends object>({
         setPagina(1)
       }}
       headerGroups={grupos}
-      compact
+      compact={compacta}
+      renderDetail={renderDetail}
       exportFormats={['excel', 'pdf', 'csv']}
       exportColumns={exportColumns}
       loadAllForExport={async () => linhas}

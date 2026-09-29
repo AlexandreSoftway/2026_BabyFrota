@@ -3,8 +3,10 @@ import { useFieldArray, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { AxiosError } from 'axios'
-import { Baby, Loader2, MapPinCheck, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Baby, Camera, Eye, Loader2, MapPinCheck, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { ClienteDetalhesDialog } from '@/components/clientes/ClienteDetalhesDialog'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { CampoImagem } from '@/components/midia/CampoImagem'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -79,6 +81,7 @@ export function ClientesPage() {
   const [erroCep, setErroCep] = useState<string | null>(null)
   const [bairroEncontrado, setBairroEncontrado] = useState<string | null>(null)
   const [carregandoEdicaoId, setCarregandoEdicaoId] = useState<number | null>(null)
+  const [detalheId, setDetalheId] = useState<number | null>(null)
 
   const {
     register,
@@ -255,9 +258,12 @@ export function ClientesPage() {
     },
     {
       header: 'Ações',
-      className: 'w-24 text-right',
+      className: 'w-40 text-right',
       cell: (c) => (
-        <div className="text-right">
+        <div className="flex justify-end whitespace-nowrap">
+          <Button variant="ghost" size="icon" onClick={() => setDetalheId(c.id)} title="Ver detalhes">
+            <Eye className="size-4" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -309,6 +315,16 @@ export function ClientesPage() {
         exportFileName="clientes"
       />
 
+      <ClienteDetalhesDialog
+        clienteId={detalheId}
+        onClose={() => setDetalheId(null)}
+        onEditar={(id) => {
+          const cliente = data?.itens.find((c) => c.id === id)
+          setDetalheId(null)
+          if (cliente) void abrirEdicao(cliente)
+        }}
+      />
+
       <Dialog open={modalAberto} onOpenChange={setModalAberto}>
         <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
@@ -358,6 +374,29 @@ export function ClientesPage() {
                 {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
               </div>
             </div>
+
+            {/* Como no legado, foto e documento entram depois que o cliente existe, e cada um salva na hora. */}
+            {editando ? (
+              <div className="space-y-3 rounded-lg border p-3">
+                <p className="flex items-center gap-1.5 text-sm font-medium">
+                  <Camera className="size-4" /> Foto e documento
+                </p>
+                <div className="flex flex-wrap gap-6">
+                  <CampoImagem titulo="Foto" genero="a" url={`/cliente/${editando.id}/foto`} ladoMaximo={400} />
+                  <CampoImagem
+                    titulo="Documento"
+                    genero="o"
+                    url={`/cliente/${editando.id}/documento`}
+                    ladoMaximo={1600}
+                    formato="documento"
+                  />
+                </div>
+              </div>
+            ) : (
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Camera className="size-4" /> Foto e documento podem ser incluídos depois de salvar, ao abrir o cliente.
+              </p>
+            )}
 
             <div className="space-y-3 rounded-lg border p-3">
               <p className="flex items-center gap-1.5 text-sm font-medium">

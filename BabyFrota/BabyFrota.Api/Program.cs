@@ -4,6 +4,7 @@ using BabyFrota.Api.Middleware;
 using BabyFrota.Api.OpenApi;
 using BabyFrota.Api.Security;
 using BabyFrota.Data;
+using BabyFrota.Data.Auditoria;
 using BabyFrota.Domain.Enums;
 using BabyFrota.Services;
 using BabyFrota.Services.Seed;
@@ -17,6 +18,10 @@ var builder = WebApplication.CreateBuilder(args);
 // ---------- Camadas da aplicação ----------
 builder.Services.AddData(builder.Configuration);
 builder.Services.AddApplicationServices(builder.Configuration);
+
+// Quem está gravando (usuário do token e IP), para o log de auditoria em TBLog.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<IAuditoriaContexto, AuditoriaContextoHttp>();
 
 // ---------- MVC / Controllers ----------
 builder.Services.AddControllers();

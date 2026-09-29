@@ -31,6 +31,15 @@ export async function obterClientePorId(id: number): Promise<Cliente> {
   return data
 }
 
+/** O mesmo detalhe, para o modal "Ver detalhes"; só consulta quando o modal abre. */
+export function useClienteDetalhe(id: number | null) {
+  return useQuery({
+    queryKey: [...QUERY_KEY, 'detalhe', id],
+    queryFn: () => obterClientePorId(id as number),
+    enabled: id !== null,
+  })
+}
+
 export function useCriarCliente() {
   const queryClient = useQueryClient()
   return useMutation({

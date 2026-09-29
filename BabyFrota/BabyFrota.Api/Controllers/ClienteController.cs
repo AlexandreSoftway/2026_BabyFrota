@@ -1,6 +1,7 @@
 using BabyFrota.DTOs.Clientes;
 using BabyFrota.DTOs.Common;
 using BabyFrota.Services.Clientes;
+using BabyFrota.Services.Midias;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -12,10 +13,12 @@ namespace BabyFrota.Api.Controllers;
 public class ClienteController : ControllerBase
 {
     private readonly IClienteService _service;
+    private readonly IMidiaService _midias;
 
-    public ClienteController(IClienteService service)
+    public ClienteController(IClienteService service, IMidiaService midias)
     {
         _service = service;
+        _midias = midias;
     }
 
     [HttpGet]
@@ -48,4 +51,32 @@ public class ClienteController : ControllerBase
         await _service.ExcluirAsync(id, ct);
         return NoContent();
     }
+
+    // ---------- Foto e documento (igual ao legado: qualquer usuário que cadastra cliente) ----------
+
+    [HttpGet("{id:int}/foto")]
+    public Task<IActionResult> ObterFoto(int id, CancellationToken ct)
+        => MidiaHttp.ObterAsync(this, _midias, TipoMidia.FotoCliente, id, ct);
+
+    [HttpPut("{id:int}/foto")]
+    [RequestSizeLimit(MidiaHttp.LimiteRequisicao)]
+    public Task<IActionResult> SalvarFoto(int id, IFormFile? arquivo, CancellationToken ct)
+        => MidiaHttp.SalvarAsync(this, _midias, TipoMidia.FotoCliente, id, arquivo, ct);
+
+    [HttpDelete("{id:int}/foto")]
+    public Task<IActionResult> RemoverFoto(int id, CancellationToken ct)
+        => MidiaHttp.RemoverAsync(this, _midias, TipoMidia.FotoCliente, id, ct);
+
+    [HttpGet("{id:int}/documento")]
+    public Task<IActionResult> ObterDocumento(int id, CancellationToken ct)
+        => MidiaHttp.ObterAsync(this, _midias, TipoMidia.DocumentoCliente, id, ct);
+
+    [HttpPut("{id:int}/documento")]
+    [RequestSizeLimit(MidiaHttp.LimiteRequisicao)]
+    public Task<IActionResult> SalvarDocumento(int id, IFormFile? arquivo, CancellationToken ct)
+        => MidiaHttp.SalvarAsync(this, _midias, TipoMidia.DocumentoCliente, id, arquivo, ct);
+
+    [HttpDelete("{id:int}/documento")]
+    public Task<IActionResult> RemoverDocumento(int id, CancellationToken ct)
+        => MidiaHttp.RemoverAsync(this, _midias, TipoMidia.DocumentoCliente, id, ct);
 }

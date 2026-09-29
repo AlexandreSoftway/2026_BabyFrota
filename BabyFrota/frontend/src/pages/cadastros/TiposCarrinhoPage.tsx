@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { BadgeDollarSign, Pencil, Plus, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { FaixasPrecoDialog } from '@/components/tipos-carrinho/FaixasPrecoDialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -40,6 +41,7 @@ export function TiposCarrinhoPage() {
 
   const [modalAberto, setModalAberto] = useState(false)
   const [editando, setEditando] = useState<TipoCarrinho | null>(null)
+  const [tipoPrecos, setTipoPrecos] = useState<TipoCarrinho | null>(null)
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -73,7 +75,12 @@ export function TiposCarrinhoPage() {
   }
 
   async function onExcluir(item: TipoCarrinho) {
-    if (!confirm(`Excluir o tipo de carrinho "${item.descricao}"?`)) return
+    // Como no legado, as faixas de preço do tipo saem junto.
+    const faixas =
+      item.quantidadeFaixas > 0
+        ? ` ${item.quantidadeFaixas === 1 ? 'A faixa de preço dele também será excluída' : `As ${item.quantidadeFaixas} faixas de preço dele também serão excluídas`}.`
+        : ''
+    if (!confirm(`Excluir o tipo de carrinho "${item.descricao}"?${faixas}`)) return
     try {
       await excluir.mutateAsync(item.id)
       toast.success('Tipo de carrinho excluído com sucesso.')
@@ -101,20 +108,21 @@ export function TiposCarrinhoPage() {
               <TableRow>
                 <TableHead>Descrição</TableHead>
                 <TableHead>Carrinhos cadastrados</TableHead>
-                <TableHead className="w-32 text-right">Ações</TableHead>
+                <TableHead>Faixas de preço</TableHead>
+                <TableHead className="w-40 text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading && (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center text-muted-foreground">
+                  <TableCell colSpan={4} className="text-center text-muted-foreground">
                     Carregando...
                   </TableCell>
                 </TableRow>
               )}
               {!isLoading && data?.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center text-muted-foreground">
+                  <TableCell colSpan={4} className="text-center text-muted-foreground">
                     Nenhum tipo de carrinho cadastrado.
                   </TableCell>
                 </TableRow>
@@ -125,7 +133,19 @@ export function TiposCarrinhoPage() {
                   <TableCell>
                     <Badge variant="secondary">{item.quantidadeCarrinhos}</Badge>
                   </TableCell>
+                  <TableCell>
+                    <button type="button" onClick={() => setTipoPrecos(item)} title="Ver e editar as faixas de preço">
+                      {item.quantidadeFaixas > 0 ? (
+                        <Badge variant="secondary">{item.quantidadeFaixas}</Badge>
+                      ) : (
+                        <Badge variant="warning">Sem preço</Badge>
+                      )}
+                    </button>
+                  </TableCell>
                   <TableCell className="text-right">
+                    <Button variant="ghost" size="icon" onClick={() => setTipoPrecos(item)} title="Faixas de preço">
+                      <BadgeDollarSign className="size-4" />
+                    </Button>
                     <Button variant="ghost" size="icon" onClick={() => abrirEdicao(item)} title="Editar">
                       <Pencil className="size-4" />
                     </Button>
@@ -162,6 +182,8 @@ export function TiposCarrinhoPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <FaixasPrecoDialog tipo={tipoPrecos} onClose={() => setTipoPrecos(null)} />
     </>
   )
 }

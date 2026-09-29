@@ -1,6 +1,7 @@
 using BabyFrota.DTOs.Carrinhos;
 using BabyFrota.DTOs.Common;
 using BabyFrota.Services.Carrinhos;
+using BabyFrota.Services.Midias;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -12,10 +13,12 @@ namespace BabyFrota.Api.Controllers;
 public class CarrinhoController : ControllerBase
 {
     private readonly ICarrinhoService _service;
+    private readonly IMidiaService _midias;
 
-    public CarrinhoController(ICarrinhoService service)
+    public CarrinhoController(ICarrinhoService service, IMidiaService midias)
     {
         _service = service;
+        _midias = midias;
     }
 
     [HttpGet]
@@ -57,4 +60,21 @@ public class CarrinhoController : ControllerBase
         await _service.ExcluirAsync(id, ct);
         return NoContent();
     }
+
+    // ---------- Foto: ver é livre; trocar e remover, só quem cadastra carrinho ----------
+
+    [HttpGet("{id:int}/foto")]
+    public Task<IActionResult> ObterFoto(int id, CancellationToken ct)
+        => MidiaHttp.ObterAsync(this, _midias, TipoMidia.FotoCarrinho, id, ct);
+
+    [HttpPut("{id:int}/foto")]
+    [Authorize(Policy = "Supervisor")]
+    [RequestSizeLimit(MidiaHttp.LimiteRequisicao)]
+    public Task<IActionResult> SalvarFoto(int id, IFormFile? arquivo, CancellationToken ct)
+        => MidiaHttp.SalvarAsync(this, _midias, TipoMidia.FotoCarrinho, id, arquivo, ct);
+
+    [HttpDelete("{id:int}/foto")]
+    [Authorize(Policy = "Supervisor")]
+    public Task<IActionResult> RemoverFoto(int id, CancellationToken ct)
+        => MidiaHttp.RemoverAsync(this, _midias, TipoMidia.FotoCarrinho, id, ct);
 }
